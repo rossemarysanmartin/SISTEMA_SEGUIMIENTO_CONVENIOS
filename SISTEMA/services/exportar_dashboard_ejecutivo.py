@@ -42,18 +42,10 @@ def _tiene_tabla(conn, nombre: str) -> bool:
     ).fetchone() is not None
 
 
-def _es_revision_pendiente(fila) -> bool:
-    return (
-        fila["requiere_revision_documental"] == "SI"
-        or fila["estado_relacion_documental"] in ("PROBABLE", "NO_ENCONTRADA", "MULTIPLES_COINCIDENCIAS")
-        or fila["estado_vigencia"] in (None, "SIN_INFORMACION")
-        or fila["conflicto_fecha"] == "SI"
-        or fila["tiene_adenda"] == "POR_REVISAR"
-    )
-
-
 def _descripciones_revision(fila) -> list:
     d = []
+    if fila["requiere_revision_documental"] == "SI":
+        d.append("Requiere revisión documental")
     if fila["estado_vigencia"] in (None, "SIN_INFORMACION"):
         d.append("Falta información de vigencia")
     if fila["estado_relacion_documental"] in ("PROBABLE", "MULTIPLES_COINCIDENCIAS"):
@@ -79,7 +71,7 @@ def _recolectar_convenios(conn) -> list:
 
     resultado = []
     for f in filas:
-        revision = _es_revision_pendiente(f)
+        es_revision = (f["requiere_revision_documental"] == "SI")
         resultado.append({
             "id": f["id_sistema"],
             "anio": f["anio"],
@@ -96,8 +88,8 @@ def _recolectar_convenios(conn) -> list:
             "adenda": f["tiene_adenda"] or "NO",
             "conflicto": f["conflicto_fecha"] or "NO",
             "expediente_disponible": bool(f["ruta_documento_principal"]),
-            "revision": revision,
-            "descripciones_revision": _descripciones_revision(f) if revision else [],
+            "revision": es_revision,
+            "descripciones_revision": _descripciones_revision(f) if (es_revision or f["conflicto_fecha"] == "SI" or f["tiene_adenda"] == "POR_REVISAR") else [],
         })
     return resultado
 
@@ -571,7 +563,7 @@ td.col-institucion { min-width: 240px; font-weight: 500; }
             </div>
             <div class="tarjeta" onclick="filtrarConvenios('SIN_INFORMACION')">
                 <div class="tarjeta-valor" id="cnt-sin_info">⚪ 0</div>
-                <div class="tarjeta-etiqueta">SIN INFORMACIÓN</div>
+                <div class="tarjeta-etiqueta">SIN INFORMACIÓN DE VIGENCIA</div>
             </div>
             <div class="tarjeta" onclick="cambiarVista('revision')">
                 <div class="tarjeta-valor" id="cnt-revision">🟠 0</div>
@@ -591,7 +583,7 @@ td.col-institucion { min-width: 240px; font-weight: 500; }
                 </thead>
                 <tbody id="tbody-proximos-top"></tbody>
             </table>
-            <p style="margin-top:12px;"><button class="btn btn-secundario" onclick="cambiarVista('proximos-vencer')">Ver todos los próximos a vencer</button></p>
+            <p style="margin-top:12px;"><button class="btn btn-secundario" onclick="cambiarVista('proximos-vencer')">Ver todos</button></p>
         </div>
 
         <h1>Solicitudes en trámite</h1>
@@ -921,6 +913,12 @@ function cambiarVista(nombre) {
         }
     });
 
+    if (nombre === 'revision') {
+        renderizarRevisiones();
+    } else if (nombre === 'proximos-vencer') {
+        renderizarProximosLista();
+    }
+
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -997,7 +995,7 @@ function aplicarFiltros() {
         if (tipo && c.tipo !== tipo) return false;
         if (estado && c.estado_vigencia !== estado) return false;
         if (admin && c.administrador !== admin) return false;
-        if (adenda && c.adenda !== adenda) return false;
+        if (adenda && c.adenda !== adenda && !(adenda === 'SI' && c.adenda === 'POR_REVISAR')) return false;
         if (revision === 'SI' && !c.revision) return false;
         if (revision === 'NO' && c.revision) return false;
         return true;
@@ -1169,8 +1167,7 @@ function renderizarSolicitudesKanban() {
     });
 }
 
-function renderizarVistasEspeciales() {
-    // 1. Proximos a vencer
+function renderizarProximosLista() {
     const tbodyProx = document.getElementById('tbody-proximos-lista');
     const proximos = DATOS.convenios.filter(c => c.estado_vigencia === 'PROXIMO_A_VENCER').sort((a,b) => (a.dias||0) - (b.dias||0));
     tbodyProx.innerHTML = '';
@@ -1186,12 +1183,34 @@ function renderizarVistasEspeciales() {
             </tr>
         `;
     });
+}
+
+function renderizarRevisiones() {
+    const tbodyRev = document.getElementById('tbody-revision-lista');
+    const revisiones = DATOS.convenios.filter(c => c.revision);
+    tbodyRev.innerHTML = '';
+    revisiones.forEach(c => {
+        const motivos = c.descripciones_revision.join(', ') || 'Requiere revisión documental';
+        tbodyRev.innerHTML += `
+            <tr style="cursor:pointer;" onclick="abrirModalPorId('${c.id}')">
+                <td>${escapeHtml(c.codigo)}</td>
+                <td>${c.anio}</td>
+                <td class="col-institucion">${escapeHtml(c.institucion)}</td>
+                <td><span class="badge badge-revision">${escapeHtml(motivos)}</span></td>
+                <td>${escapeHtml(c.administrador)}</td>
+            </tr>
+        `;
+    });
+}
+
+function renderizarVistasEspeciales() {
+    renderizarProximosLista();
 
     // 2. Vencidos
     const tbodyVenc = document.getElementById('tbody-vencidos-lista');
     const vencidos = DATOS.convenios.filter(c => c.estado_vigencia === 'VENCIDO');
     tbodyVenc.innerHTML = '';
-    vencidos.slice(0, 100).forEach(c => {
+    vencidos.forEach(c => {
         tbodyVenc.innerHTML += `
             <tr style="cursor:pointer;" onclick="abrirModalPorId('${c.id}')">
                 <td>${escapeHtml(c.codigo)}</td>
@@ -1205,25 +1224,12 @@ function renderizarVistasEspeciales() {
     });
 
     // 3. Revision
-    const tbodyRev = document.getElementById('tbody-revision-lista');
-    const revisiones = DATOS.convenios.filter(c => c.revision);
-    tbodyRev.innerHTML = '';
-    revisiones.forEach(c => {
-        const motivos = c.descripciones_revision.join(', ') || 'Revisión documental';
-        tbodyRev.innerHTML += `
-            <tr style="cursor:pointer;" onclick="abrirModalPorId('${c.id}')">
-                <td>${escapeHtml(c.codigo)}</td>
-                <td>${c.anio}</td>
-                <td class="col-institucion">${escapeHtml(c.institucion)}</td>
-                <td><span class="badge badge-revision">${escapeHtml(motivos)}</span></td>
-                <td>${escapeHtml(c.administrador)}</td>
-            </tr>
-        `;
-    });
+    renderizarRevisiones();
 
     // 4. Mi trabajo
     const tbodyTrab = document.getElementById('tbody-mi-trabajo');
     tbodyTrab.innerHTML = '';
+    const proximos = DATOS.convenios.filter(c => c.estado_vigencia === 'PROXIMO_A_VENCER').sort((a,b) => (a.dias||0) - (b.dias||0));
     proximos.slice(0, 10).forEach(c => {
         tbodyTrab.innerHTML += `
             <tr style="cursor:pointer;" onclick="abrirModalPorId('${c.id}')">
@@ -1254,7 +1260,7 @@ function abrirModal(c) {
 
     const divAlertas = document.getElementById('modal-alertas');
     divAlertas.innerHTML = '';
-    if (c.revision && c.descripciones_revision.length > 0) {
+    if (c.descripciones_revision && c.descripciones_revision.length > 0) {
         divAlertas.innerHTML = `
             <div class="alerta-box alerta-warning-box" style="margin-top:14px;">
                 <strong>Observaciones de control de calidad:</strong>
