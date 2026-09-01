@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block titulo %}{{ preset.titulo }} — {{ s['codigo_solicitud'] }}{% endblock %}
+{% block contenido %}
+<a class="enlace-volver" href="{{ url_for('solicitudes.ficha', id_solicitud=s['id']) }}">&larr; Volver a {{ s['codigo_solicitud'] }}</a>
+<h1>{{ preset.icono }} {{ preset.titulo }}</h1>
+<p class="texto-vacio" style="padding:0 0 10px;">{{ s['institucion'] }} — solo se piden los datos esenciales; el resto se completa automáticamente y puede ajustarse luego desde "Registrar actuación → Más opciones".</p>
+
+<form method="post" class="panel" style="display:flex; flex-direction:column; gap:12px; max-width:520px;">
+    {% if 'dependencia_destino' in preset.campos %}
+    <div class="campo">
+        <label>Dependencia</label>
+        <select name="dependencia_destino" autofocus>
+            <option value="">—</option>
+            {% for d in catalogo_dependencias %}<option value="{{ d['nombre'] }}">{{ d['nombre'] }}</option>{% endfor %}
+        </select>
+    </div>
+    {% endif %}
+    {% if 'delegado' in preset.campos %}
+    <div class="campo"><label>Delegar a *</label><input type="text" name="delegado" required autofocus></div>
+    {% endif %}
+    {% if 'fecha' in preset.campos %}
+    <div class="campo"><label>Fecha</label><input type="date" name="fecha" value="{{ hoy }}"></div>
+    {% endif %}
+    {% if 'responsable' in preset.campos %}
+    <div class="campo"><label>Responsable</label><input type="text" name="responsable" value="{{ s['responsable_actual'] or '' }}"></div>
+    {% endif %}
+    {% if 'fecha_limite_respuesta' in preset.campos %}
+    <div class="campo"><label>Fecha límite (opcional)</label><input type="date" name="fecha_limite_respuesta"></div>
+    {% endif %}
+    {% if 'descripcion' in preset.campos %}
+    <div class="campo"><label>Observación breve</label><textarea name="descripcion" rows="2"></textarea></div>
+    {% endif %}
+
+    <details style="margin-top:4px;">
+        <summary style="cursor:pointer; color:var(--azul-utmach); font-size:0.85rem;">Más opciones</summary>
+        <div style="display:flex; flex-direction:column; gap:8px; margin-top:10px;">
+            <div class="campo">
+                <label>Estado nuevo (sugerido: {{ preset.estado_sugerido or 'sin cambio' }})</label>
+                <input type="text" name="estado_nuevo" placeholder="dejar vacío para usar el sugerido">
+            </div>
+            <div class="campo">
+                <label>Etapa nueva (sugerida: {{ preset.etapa_sugerida or 'sin cambio' }})</label>
+                <input type="text" name="etapa_nueva" placeholder="dejar vacío para usar la sugerida">
+            </div>
+        </div>
+    </details>
+
+    <div>
+        <button class="btn" type="submit">Guardar</button>
+        <a class="btn btn-secundario" href="{{ url_for('solicitudes.ficha', id_solicitud=s['id']) }}">Cancelar</a>
+    </div>
+</form>
+{% endblock %}

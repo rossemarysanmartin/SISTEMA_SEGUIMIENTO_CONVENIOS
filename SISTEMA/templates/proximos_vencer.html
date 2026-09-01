@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block titulo %}Próximos a vencer — Convenios UTMACH{% endblock %}
+{% block contenido %}
+<h1>🟡 Convenios próximos a vencer ({{ filas|length }})</h1>
+<div class="panel">
+    {% if filas %}
+    <table>
+        <thead><tr><th>Código</th><th>Año</th><th>Institución</th><th>Tipo</th><th>Vencimiento</th><th>Días restantes</th><th>Administrador</th></tr></thead>
+        <tbody>
+        {% for f in filas %}
+            <tr onclick="location.href='{{ url_for('convenios.ficha', id_sistema=f['id_sistema']) }}'" style="cursor:pointer">
+                <td>{{ f['codigo_original'] or '—' }}</td>
+                <td>{{ f['anio'] }}</td>
+                <td class="col-institucion">{{ f['institucion'] }}</td>
+                <td>{{ f['tipo_instrumento'] or '—' }}</td>
+                <td>{{ f['fecha_finalizacion'] or '—' }}</td>
+                <td>{{ f['dias_para_vencimiento'] }}</td>
+                <td>{{ f['administrador'] or '—' }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="texto-vacio">No hay convenios próximos a vencer.</p>
+    {% endif %}
+</div>
+{% endblock %}

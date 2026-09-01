@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block titulo %}{{ c['institucion'] }} — Convenios UTMACH{% endblock %}
+{% block contenido %}
+<a class="enlace-volver" href="javascript:history.back()">&larr; Volver</a>
+<h1>{{ c['institucion'] }}</h1>
+
+{% if c['conflicto_fecha']=='SI' %}
+<div class="alerta alerta-conflicto">
+    ⚠️ <strong>CONFLICTO DETECTADO</strong> entre la matriz y el documento.<br>
+    Fecha suscripción — matriz: <strong>{{ c['fecha_suscripcion'] or '—' }}</strong> · documento: <strong>{{ c['fecha_suscripcion_documento'] or '—' }}</strong><br>
+    Fecha terminación — matriz: <strong>{{ c['fecha_finalizacion'] or '—' }}</strong> · documento: <strong>{{ c['fecha_finalizacion_documento'] or '—' }}</strong><br>
+    Estado: REQUIERE REVISIÓN. No se corrige automáticamente; un responsable debe validar cuál dato es correcto.
+</div>
+{% endif %}
+
+{% if c['tiene_adenda']=='SI' %}
+<div class="alerta alerta-adenda">
+    🔵 <strong>POSIBLE ADENDA RELACIONADA</strong> — la vigencia mostrada puede no reflejar modificaciones posteriores.
+    <br>Vigencia pendiente de validar con adenda.
+</div>
+{% elif c['tiene_adenda']=='POR_REVISAR' %}
+<div class="alerta alerta-info">🔵 Se detectó una posible mención de adenda en el texto del documento; sin coincidencia clara de archivo. Requiere revisión manual.</div>
+{% endif %}
+
+{% if solicitud_origen %}
+<div class="alerta alerta-info">
+    📩 <strong>Origen del trámite:</strong>
+    <a href="{{ url_for('solicitudes.ficha', id_solicitud=solicitud_origen['id']) }}">{{ solicitud_origen['codigo_solicitud'] }}</a>
+</div>
+{% endif %}
+
+<div class="ficha-secciones">
+    <div class="panel">
+        <h2>Información general</h2>
+        <dl class="campo-lista">
+            <dt>ID</dt><dd>{{ c['id_sistema'] }}</dd>
+            <dt>Código</dt><dd>{{ c['codigo_original'] or c['numero_original'] or '—' }}</dd>
+            <dt>Año</dt><dd>{{ c['anio'] }}</dd>
+            <dt>Institución</dt><dd>{{ c['institucion'] }}</dd>
+            <dt>Tipo</dt><dd>{{ c['tipo_instrumento'] or '—' }} {% if c['subtipo'] %}({{ c['subtipo'] }}){% endif %}</dd>
+            <dt>Objeto</dt><dd>{{ c['objeto_documento_resumen'] or c['objeto'] or '—' }}</dd>
+            <dt>Fecha de suscripción</dt><dd>{{ c['fecha_suscripcion_documento'] or c['fecha_suscripcion'] or '—' }}</dd>
+            <dt>Fecha de inicio</dt><dd>{{ c['fecha_inicio_documento'] or c['fecha_inicio'] or '—' }}</dd>
+            <dt>Plazo</dt><dd>{{ c['plazo_documento'] or c['plazo'] or '—' }}</dd>
+            <dt>Fecha de terminación</dt><dd>{{ c['fecha_finalizacion_documento'] or c['fecha_finalizacion'] or '—' }}</dd>
+            <dt>Estado de vigencia</dt>
+            <dd>
+                {% if c['estado_vigencia']=='VIGENTE' %}<span class="estado vigente">🟢 VIGENTE</span>
+                {% elif c['estado_vigencia']=='PROXIMO_A_VENCER' %}<span class="estado proximo">🟡 PRÓXIMO A VENCER</span>
+                {% elif c['estado_vigencia']=='VENCIDO' %}<span class="estado vencido">🔴 VENCIDO</span>
+                {% else %}<span class="estado sin-info">⚪ SIN INFORMACIÓN</span>{% endif %}
+            </dd>
+            <dt>Días restantes</dt><dd>{{ c['dias_para_vencimiento'] if c['dias_para_vencimiento'] is not none else '—' }}</dd>
+            <dt>Administrador</dt><dd>{{ c['administrador_documento'] or c['administrador'] or '—' }}</dd>
+            <dt>Unidad responsable</dt><dd>{{ c['unidad_responsable'] or '—' }}</dd>
+        </dl>
+    </div>
+
+    <div class="panel">
+        <h2>Información documental</h2>
+        <dl class="campo-lista">
+            <dt>Documento principal</dt>
+            <dd>{{ c['ruta_documento_principal'].split('\\')[-1] if c['ruta_documento_principal'] else '—' }}</dd>
+            <dt>Ruta</dt><dd style="word-break:break-all;">{{ c['ruta_documento_principal'] or '—' }}</dd>
+            <dt>Firma electrónica detectada</dt>
+            <dd>{{ 'SÍ' if c['cantidad_firmas'] and c['cantidad_firmas']|default(0) else (c['tipo_documento_tecnico'] or 'POR REVISAR') }}</dd>
+            <dt>Fecha de último análisis</dt><dd>{{ c['fecha_ultimo_analisis_documento'] or '—' }}</dd>
+            <dt>Estado de relación documental</dt><dd>{{ c['estado_relacion_documental'] or '—' }} (confianza: {{ c['confianza_relacion'] if c['confianza_relacion'] is not none else '—' }})</dd>
+        </dl>
+        {% if c['ruta_documento_principal'] %}
+        <p>
+            <a class="btn" href="{{ url_for('convenios.abrir_documento', ruta=c['ruta_documento_principal']) }}">Abrir documento</a>
+            <a class="btn btn-secundario" href="{{ url_for('convenios.abrir_carpeta', ruta=c['ruta_documento_principal']) }}">Abrir carpeta</a>
+        </p>
+        {% endif %}
+    </div>
+
+    <div class="panel">
+        <h2>Control de calidad</h2>
+        <dl class="campo-lista">
+            <dt>Nivel de confianza</dt><dd>{{ c['confianza_analisis'] or '—' }}</dd>
+            <dt>Requiere revisión</dt><dd>{{ c['requiere_revision_documental'] or 'NO' }}</dd>
+            <dt>Conflictos matriz/documento</dt><dd>{{ c['conflicto_fecha'] or 'NO' }}</dd>
+            <dt>Posible adenda</dt><dd>{{ c['tiene_adenda'] or 'NO' }}</dd>
+            <dt>Estado de revisión de vigencia</dt><dd>{{ c['estado_revision_vigencia'] or '—' }}</dd>
+        </dl>
+    </div>
+</div>
+
+<h2>Documentos del expediente</h2>
+<div class="panel">
+    {% if documentos %}
+    <table>
+        <thead><tr><th>Nombre</th><th>Tipo</th><th>Ext.</th><th>Modificado</th><th>Clasificación técnica</th><th>Firma electrónica</th><th>Revisión</th><th></th></tr></thead>
+        <tbody>
+        {% for d in documentos %}
+            <tr>
+                <td class="col-institucion">{{ d['nombre'] }}</td>
+                <td>{{ d['carpeta_tipo'] or '—' }}</td>
+                <td>{{ d['extension'] or '—' }}</td>
+                <td>{{ d['fecha_modificacion'] or '—' }}</td>
+                <td>{{ d['tipo_documento_tecnico'] or d['clasificacion_tecnica_pdf'] or '—' }}</td>
+                <td>{{ d['firma_electronica_detectada'] or ('SÍ' if d['cantidad_firmas'] else 'NO') }}</td>
+                <td>{{ 'SÍ' if d['requiere_revision'] else 'NO' }}</td>
+                <td>
+                    <a class="btn btn-secundario" href="{{ url_for('convenios.abrir_documento', ruta=d['ruta']) }}">Abrir</a>
+                    <a class="btn btn-secundario" href="{{ url_for('convenios.abrir_carpeta', ruta=d['ruta']) }}">Carpeta</a>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="texto-vacio">No hay documentos registrados para este convenio.</p>
+    {% endif %}
+</div>
+
+{% if documentos_adenda %}
+<h2>Documentos de adenda relacionados</h2>
+<div class="panel">
+    <table>
+        <thead><tr><th>Nombre</th><th>Modificado</th><th></th></tr></thead>
+        <tbody>
+        {% for d in documentos_adenda %}
+            <tr>
+                <td class="col-institucion">{{ d['nombre'] }}</td>
+                <td>{{ d['fecha_modificacion'] or '—' }}</td>
+                <td>
+                    <a class="btn btn-secundario" href="{{ url_for('convenios.abrir_documento', ruta=d['ruta']) }}">Abrir</a>
+                    <a class="btn btn-secundario" href="{{ url_for('convenios.abrir_carpeta', ruta=d['ruta']) }}">Carpeta</a>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<h2>Fuente de los datos (evidencias documentales)</h2>
+<div class="panel">
+    {% if evidencias %}
+    <table>
+        <thead><tr><th>Campo</th><th>Valor</th><th>Página</th><th>Fragmento fuente</th><th>Confianza</th></tr></thead>
+        <tbody>
+        {% for e in evidencias %}
+            <tr>
+                <td>{{ e['campo'] }}</td>
+                <td>{{ e['valor_extraido'] or '—' }}</td>
+                <td>{{ e['pagina'] if e['pagina'] is not none else '—' }}</td>
+                <td class="col-objeto">{{ (e['fragmento_fuente'] or '—')[:180] }}</td>
+                <td>{{ e['nivel_confianza'] or '—' }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="texto-vacio">No hay evidencias documentales registradas para este convenio.</p>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,28 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Logs and large backups
+LOGS/*.log
+RESPALDOS/*.db
+
+# OS files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# VS Code / IDEs
+.vscode/
+.idea/

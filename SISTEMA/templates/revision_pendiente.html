@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block titulo %}Revisión pendiente — Convenios UTMACH{% endblock %}
+{% block contenido %}
+<h1>🟠 Revisión pendiente ({{ filas|length }})</h1>
+<p class="texto-vacio" style="padding:0 0 12px;">Incluye: sin documento, sin fecha, sin vigencia, conflicto matriz/documento, coincidencia probable, posible adenda por confirmar.</p>
+<div class="panel">
+    {% if filas %}
+    <table>
+        <thead><tr><th>Código</th><th>Año</th><th>Institución</th><th>Tipo</th><th>Relación documental</th><th>Estado revisión</th><th>Conflicto</th><th>Adenda</th><th>Vigencia</th></tr></thead>
+        <tbody>
+        {% for f in filas %}
+            <tr onclick="location.href='{{ url_for('convenios.ficha', id_sistema=f['id_sistema']) }}'" style="cursor:pointer">
+                <td>{{ f['codigo_original'] or '—' }}</td>
+                <td>{{ f['anio'] }}</td>
+                <td class="col-institucion">{{ f['institucion'] }}</td>
+                <td>{{ f['tipo_instrumento'] or '—' }}</td>
+                <td>{{ f['estado_relacion_documental'] or '—' }}</td>
+                <td>{{ f['estado_revision_vigencia'] or '—' }}</td>
+                <td>{{ f['conflicto_fecha'] or 'NO' }}</td>
+                <td>{{ f['tiene_adenda'] or 'NO' }}</td>
+                <td>{{ f['estado_vigencia'] or 'SIN_INFORMACION' }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="texto-vacio">No hay registros pendientes de revisión.</p>
+    {% endif %}
+</div>
+{% endblock %}

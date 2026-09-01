@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block titulo %}Tablero de solicitudes — Convenios UTMACH{% endblock %}
+{% block contenido %}
+<a class="enlace-volver" href="{{ url_for('solicitudes.lista') }}">&larr; Volver a solicitudes</a>
+<h1>🗂 Tablero de solicitudes (solo consulta)</h1>
+<div style="display:flex; gap:12px; overflow-x:auto; padding-bottom:10px;">
+    {% for col in columnas %}
+    <div style="min-width:240px; background:var(--blanco); border:1px solid var(--gris-borde); border-radius:8px; padding:10px;">
+        <h2 style="margin-top:0; font-size:0.95rem;">{{ col.etapa }} ({{ col.solicitudes|length }})</h2>
+        {% for s in col.solicitudes %}
+        <a href="{{ url_for('solicitudes.ficha', id_solicitud=s['id']) }}" style="display:block; background:var(--gris-fondo); border:1px solid var(--gris-borde); border-radius:6px; padding:8px; margin-bottom:8px; text-decoration:none; color:inherit; font-size:0.8rem;">
+            <strong>{{ s['codigo_solicitud'] }}</strong><br>
+            {{ s['institucion'] }}<br>
+            {{ s['responsable_actual'] or '—' }}<br>
+            {{ s['semaforo']['icono'] }} {{ s['semaforo']['etiqueta'] }}
+        </a>
+        {% else %}
+        <p class="texto-vacio" style="padding:8px 0;">Sin solicitudes</p>
+        {% endfor %}
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

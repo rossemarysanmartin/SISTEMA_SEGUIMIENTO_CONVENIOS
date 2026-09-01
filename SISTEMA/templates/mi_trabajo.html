@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block titulo %}Mi trabajo — Convenios UTMACH{% endblock %}
+{% block contenido %}
+<h1>🗓 Mi trabajo / seguimiento diario</h1>
+
+{% if not responsable %}
+<div class="panel" style="max-width:420px;">
+    <p>Sin autenticación todavía: indica tu nombre (tal como aparece como "Responsable" en las solicitudes) para ver lo que tienes asignado.</p>
+    <form method="get" style="display:flex; gap:8px;">
+        <input type="text" name="responsable" placeholder="Tu nombre" required style="flex:1;">
+        <button class="btn" type="submit">Ver mi trabajo</button>
+    </form>
+</div>
+{% else %}
+<p>Mostrando trabajo de: <strong>{{ responsable }}</strong> — <a href="{{ url_for('trabajo.salir') }}">cambiar</a></p>
+
+<div class="ficha-secciones">
+    <div class="panel">
+        <h2 style="margin-top:0;">Trámites asignados ({{ asignados|length }})</h2>
+        {% if asignados %}
+        <table>
+            <thead><tr><th>Código</th><th>Institución</th><th>Estado</th><th>Etapa</th></tr></thead>
+            <tbody>
+            {% for s in asignados %}
+                <tr onclick="location.href='{{ url_for('solicitudes.ficha', id_solicitud=s['id']) }}'" style="cursor:pointer">
+                    <td>{{ s['codigo_solicitud'] }}</td>
+                    <td class="col-institucion">{{ s['institucion'] }}</td>
+                    <td>{{ s['estado_actual'] }}</td>
+                    <td>{{ s['etapa_actual'] or '—' }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="texto-vacio">Sin trámites asignados.</p>
+        {% endif %}
+    </div>
+
+    <div class="panel">
+        <h2 style="margin-top:0;">Pendientes de respuesta a mi cargo ({{ pendientes|length }})</h2>
+        {% if pendientes %}
+        <table>
+            <thead><tr><th>Solicitud</th><th>Actuación</th><th>Días hábiles</th></tr></thead>
+            <tbody>
+            {% for p in pendientes %}
+                <tr onclick="location.href='{{ url_for('solicitudes.ficha', id_solicitud=p['id_solicitud']) }}'" style="cursor:pointer">
+                    <td>{{ p['codigo_solicitud'] }}</td>
+                    <td>{{ p['tipo_actuacion'] }}</td>
+                    <td>{% if p['alerta'] %}<span class="badge badge-conflicto">{{ p['dias_habiles_esperando'] }}</span>{% else %}{{ p['dias_habiles_esperando'] }}{% endif %}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="texto-vacio">Sin pendientes a tu cargo.</p>
+        {% endif %}
+    </div>
+</div>
+
+<h2>Actividad reciente (todo el equipo)</h2>
+<div class="panel">
+    {% if actividad %}
+    {% for a in actividad %}
+    <div style="padding:6px 0; border-bottom:1px solid var(--gris-borde); font-size:0.88rem;">
+        <strong>{{ a['fecha'] }}{% if a['hora'] %} {{ a['hora'] }}{% endif %}</strong> —
+        <a href="{{ url_for('solicitudes.ficha', id_solicitud=a['id_solicitud']) }}">{{ a['codigo_solicitud'] }}</a>
+        {{ ICONOS_ACTUACION.get(a['tipo_actuacion'], '❔') }} {{ a['tipo_actuacion'].replace('_',' ').title() }}
+        {% if a['descripcion'] %}— {{ a['descripcion'][:80] }}{% endif %}
+    </div>
+    {% endfor %}
+    {% else %}
+    <p class="texto-vacio">Sin actividad registrada todavía.</p>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block titulo %}Solicitudes — Convenios UTMACH{% endblock %}
+{% block contenido %}
+<h1>📩 Solicitudes de convenio</h1>
+
+<div class="tarjetas">
+    <a class="tarjeta" href="{{ url_for('solicitudes.lista') }}"><div class="tarjeta-valor">{{ contadores.total }}</div><div class="tarjeta-etiqueta">TOTAL</div></a>
+    <a class="tarjeta" href="{{ url_for('solicitudes.lista', estado_actual='RECIBIDA') }}"><div class="tarjeta-valor">{{ contadores.recibidas }}</div><div class="tarjeta-etiqueta">RECIBIDAS</div></a>
+    <a class="tarjeta" href="{{ url_for('solicitudes.lista', estado_actual='EN_GESTION') }}"><div class="tarjeta-valor">{{ contadores.en_gestion }}</div><div class="tarjeta-etiqueta">EN GESTIÓN</div></a>
+    <a class="tarjeta" href="{{ url_for('pendientes.pendientes_de_respuesta') }}"><div class="tarjeta-valor">⏳ {{ contadores.pendientes_respuesta }}</div><div class="tarjeta-etiqueta">PENDIENTES DE RESPUESTA</div></a>
+    <a class="tarjeta" href="{{ url_for('solicitudes.lista', etapa_actual='REVISION_JURIDICA') }}"><div class="tarjeta-valor">{{ contadores.en_juridico }}</div><div class="tarjeta-etiqueta">EN JURÍDICO</div></a>
+    <a class="tarjeta" href="{{ url_for('solicitudes.lista', etapa_actual='FACTIBILIDAD') }}"><div class="tarjeta-valor">{{ contadores.en_factibilidad }}</div><div class="tarjeta-etiqueta">EN FACTIBILIDAD</div></a>
+    <a class="tarjeta" href="{{ url_for('solicitudes.lista', etapa_actual='FIRMA') }}"><div class="tarjeta-valor">{{ contadores.en_firma }}</div><div class="tarjeta-etiqueta">EN FIRMA</div></a>
+    <a class="tarjeta" href="{{ url_for('solicitudes.lista', estado_actual='OBSERVADO') }}"><div class="tarjeta-valor">{{ contadores.observadas }}</div><div class="tarjeta-etiqueta">OBSERVADAS</div></a>
+    <a class="tarjeta" href="{{ url_for('solicitudes.lista', estado_actual='SUSCRITO') }}"><div class="tarjeta-valor">{{ contadores.suscritas }}</div><div class="tarjeta-etiqueta">SUSCRITAS</div></a>
+    <a class="tarjeta" href="{{ url_for('solicitudes.lista', dias_sin_movimiento_min=config.semaforo_demora_max) }}"><div class="tarjeta-valor">🔴 {{ contadores.sin_movimiento }}</div><div class="tarjeta-etiqueta">SIN MOVIMIENTO</div></a>
+</div>
+
+<p>
+    <a class="btn" href="{{ url_for('solicitudes.nueva') }}">➕ Nueva solicitud</a>
+    <a class="btn btn-secundario" href="{{ url_for('solicitudes.tablero') }}">🗂 Ver tablero</a>
+    <a class="btn btn-secundario" href="{{ url_for('solicitudes.informes') }}">📈 Informes</a>
+    <form style="display:inline" method="post" action="{{ url_for('solicitudes.exportar_excel') }}">
+        <button class="btn btn-secundario" type="submit">📊 Exportar solicitudes</button>
+    </form>
+</p>
+
+<form class="form-filtros" method="get">
+    <div class="campo"><label>Buscar</label><input type="text" class="busqueda" name="q" value="{{ busqueda }}" placeholder="institución, código, asunto..."></div>
+    <div class="campo"><label>Año</label><input type="number" name="anio" value="{{ filtros.anio or '' }}" style="min-width:90px;"></div>
+    <div class="campo">
+        <label>Medio de ingreso</label>
+        <select name="medio_ingreso">
+            <option value="">Todos</option>
+            {% for m in medios %}<option value="{{ m['codigo'] }}" {% if filtros.medio_ingreso==m['codigo'] %}selected{% endif %}>{{ m['icono'] }} {{ m['etiqueta'] }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="campo">
+        <label>Estado</label>
+        <select name="estado_actual">
+            <option value="">Todos</option>
+            {% for e in estados %}<option value="{{ e['codigo'] }}" {% if filtros.estado_actual==e['codigo'] %}selected{% endif %}>{{ e['etiqueta'] }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="campo">
+        <label>Etapa</label>
+        <select name="etapa_actual">
+            <option value="">Todas</option>
+            {% for e in etapas %}<option value="{{ e['codigo'] }}" {% if filtros.etapa_actual==e['codigo'] %}selected{% endif %}>{{ e['etiqueta'] }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="campo"><label>Responsable</label><input type="text" name="responsable_actual" value="{{ filtros.responsable_actual or '' }}"></div>
+    <div class="campo"><label>Delegado</label><input type="text" name="delegado_actual" value="{{ filtros.delegado_actual or '' }}"></div>
+    <div class="campo">
+        <label>Solo con respuesta pendiente</label>
+        <select name="con_respuesta_pendiente">
+            <option value="">—</option>
+            <option value="1" {% if filtros.con_respuesta_pendiente %}selected{% endif %}>Sí</option>
+        </select>
+    </div>
+    <button class="btn" type="submit">Filtrar</button>
+    <a class="btn btn-secundario" href="{{ url_for('solicitudes.lista') }}">Limpiar filtros</a>
+</form>
+
+<div class="panel">
+    {% if filas %}
+    <table>
+        <thead>
+        <tr>
+            <th>Código</th><th>Institución</th><th>Medio</th>
+            <th>Responsable</th><th>Pendiente actual</th><th>Estado</th><th>Días s/mov.</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for f in filas %}
+            <tr onclick="location.href='{{ url_for('solicitudes.ficha', id_solicitud=f['id']) }}'" style="cursor:pointer">
+                <td>{{ f['codigo_solicitud'] }}</td>
+                <td class="col-institucion">{{ f['institucion'] }}</td>
+                <td>{% if f['medio_ingreso']=='CORREO_ELECTRONICO' %}📧 CORREO{% elif f['medio_ingreso']=='SISTEMA_INSTITUCIONAL' %}📝 SISTEMA{% else %}{{ f['medio_ingreso'] }}{% endif %}</td>
+                <td>{{ f['responsable_actual'] or '—' }}</td>
+                <td class="col-objeto">{{ f['pendiente_actual'] }}</td>
+                <td>{{ f['estado_actual'] }}</td>
+                <td>{{ f['semaforo']['icono'] }} {{ f['dias_sin_movimiento_vivo'] }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    <div class="paginacion">
+        {% for p in range(1, total_paginas + 1) %}
+            {% if p == pagina %}<span class="activa">{{ p }}</span>
+            {% elif p == 1 or p == total_paginas or (p >= pagina - 2 and p <= pagina + 2) %}
+                <a href="{{ url_for('solicitudes.lista', pagina=p, q=busqueda, orden=orden, dir=direccion, anio=filtros.anio, medio_ingreso=filtros.medio_ingreso, estado_actual=filtros.estado_actual, etapa_actual=filtros.etapa_actual, responsable_actual=filtros.responsable_actual, delegado_actual=filtros.delegado_actual) }}">{{ p }}</a>
+            {% endif %}
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="texto-vacio">No se encontraron solicitudes con esos filtros.</p>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block titulo %}Vencidos — Convenios UTMACH{% endblock %}
+{% block contenido %}
+<h1>🔴 Convenios vencidos ({{ filas|length }})</h1>
+
+<form class="form-filtros" method="get">
+    <div class="campo">
+        <label>Año</label>
+        <select name="anio">
+            <option value="">Todos</option>
+            {% for a in disponibles.anios %}
+            <option value="{{ a }}" {% if filtros.anio==a %}selected{% endif %}>{{ a }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="campo">
+        <label>Tipo</label>
+        <select name="tipo">
+            <option value="">Todos</option>
+            {% for t in disponibles.tipos %}
+            <option value="{{ t }}" {% if filtros.tipo==t %}selected{% endif %}>{{ t }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="campo">
+        <label>Administrador</label>
+        <select name="administrador">
+            <option value="">Todos</option>
+            {% for adm in disponibles.administradores %}
+            <option value="{{ adm }}" {% if filtros.administrador==adm %}selected{% endif %}>{{ adm }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="campo">
+        <label>Posible adenda</label>
+        <select name="tiene_adenda">
+            <option value="">Todos</option>
+            <option value="SI" {% if filtros.tiene_adenda=='SI' %}selected{% endif %}>Sí</option>
+            <option value="NO" {% if filtros.tiene_adenda=='NO' %}selected{% endif %}>No</option>
+        </select>
+    </div>
+    <button class="btn" type="submit">Filtrar</button>
+    <a class="btn btn-secundario" href="{{ url_for('convenios.vencidos') }}">Limpiar filtros</a>
+</form>
+
+<div class="panel">
+    {% if filas %}
+    <table>
+        <thead><tr><th>Código</th><th>Año</th><th>Institución</th><th>Tipo</th><th>Venció</th><th>Administrador</th><th></th></tr></thead>
+        <tbody>
+        {% for f in filas %}
+            <tr onclick="location.href='{{ url_for('convenios.ficha', id_sistema=f['id_sistema']) }}'" style="cursor:pointer">
+                <td>{{ f['codigo_original'] or '—' }}</td>
+                <td>{{ f['anio'] }}</td>
+                <td class="col-institucion">{{ f['institucion'] }}</td>
+                <td>{{ f['tipo_instrumento'] or '—' }}</td>
+                <td>{{ f['fecha_finalizacion'] or '—' }}</td>
+                <td>{{ f['administrador'] or '—' }}</td>
+                <td>
+                    {% if f['tiene_adenda']=='SI' %}<span class="badge badge-adenda">🔵 VENCIDO + POSIBLE ADENDA</span>{% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="texto-vacio">No hay convenios vencidos con esos filtros.</p>
+    {% endif %}
+</div>
+{% endblock %}

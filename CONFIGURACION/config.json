@@ -1,0 +1,23 @@
+{
+  "ruta_base_convenios": "C:\\Users\\rsanmarti1\\OneDrive - utmachala.edu.ec\\CONVENIOS INTERINSTITUCIONALES UTMACH",
+  "carpeta_sistema": "SISTEMA_SEGUIMIENTO_CONVENIOS",
+  "anios_analizar": [2020, 2021, 2022, 2023, 2024, 2025, 2026],
+  "extensiones_matriz": [".xlsx", ".xls", ".xlsm"],
+  "extensiones_ignoradas": [".tmp", ".ini", ".db", ".lnk"],
+  "umbral_dias_proximo_vencer": 90,
+  "muestra_paginas_pdf_para_clasificar": 3,
+  "min_caracteres_texto_para_no_escaneado": 25,
+  "aplicacion": {
+    "host": "127.0.0.1",
+    "puerto": 5000,
+    "entorno": "desarrollo"
+  },
+  "solicitudes": {
+    "umbral_dias_habiles_pendiente_respuesta": 5,
+    "semaforo_dias": {
+      "normal_max": 3,
+      "atencion_max": 7,
+      "demora_max": 14
+    }
+  }
+}

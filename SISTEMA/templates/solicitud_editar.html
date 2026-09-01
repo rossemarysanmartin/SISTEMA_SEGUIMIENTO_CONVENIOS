@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block titulo %}Editar {{ s['codigo_solicitud'] }}{% endblock %}
+{% block contenido %}
+<a class="enlace-volver" href="{{ url_for('solicitudes.ficha', id_solicitud=s['id']) }}">&larr; Volver a {{ s['codigo_solicitud'] }}</a>
+<h1>Editar datos básicos — {{ s['codigo_solicitud'] }}</h1>
+<p class="texto-vacio" style="padding:0 0 10px;">Solo datos descriptivos. Los datos de trazabilidad (estado, etapa, responsable, historial) no se editan aquí — se cambian registrando una actuación. Todo cambio queda en auditoría.</p>
+
+<form method="post" class="panel" style="display:flex; flex-direction:column; gap:12px; max-width:520px;">
+    <div class="campo"><label>Institución *</label><input type="text" name="institucion" value="{{ s['institucion'] }}" required></div>
+    <div class="campo"><label>Asunto</label><input type="text" name="asunto" value="{{ s['asunto'] or '' }}"></div>
+    <div class="campo"><label>Persona de contacto</label><input type="text" name="persona_contacto" value="{{ s['persona_contacto'] or '' }}"></div>
+    <div class="campo"><label>Correo de contacto</label><input type="email" name="correo_contacto" value="{{ s['correo_contacto'] or '' }}"></div>
+    <div class="campo">
+        <label>Tipo de convenio solicitado</label>
+        <select name="tipo_convenio_solicitado">
+            <option value="">—</option>
+            {% for t in tipos_convenio %}<option value="{{ t['nombre'] }}" {% if s['tipo_convenio_solicitado']==t['nombre'] %}selected{% endif %}>{{ t['nombre'] }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="campo"><label>Observaciones</label><textarea name="observaciones" rows="3">{{ s['observaciones'] or '' }}</textarea></div>
+    <div>
+        <button class="btn" type="submit">Guardar cambios</button>
+        <a class="btn btn-secundario" href="{{ url_for('solicitudes.ficha', id_solicitud=s['id']) }}">Cancelar</a>
+    </div>
+</form>
+{% endblock %}

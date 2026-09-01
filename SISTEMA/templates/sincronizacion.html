@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block titulo %}Sincronización — Convenios UTMACH{% endblock %}
+{% block contenido %}
+<h1>⚙️ Historial de sincronizaciones</h1>
+
+<div class="panel" style="display:flex; gap:10px; align-items:center;">
+    <form method="post" action="{{ url_for('sincronizacion.ejecutar') }}">
+        <button class="btn" type="submit" {% if estado.en_progreso %}disabled{% endif %}>🔄 Sincronizar convenios</button>
+    </form>
+    <form method="post" action="{{ url_for('sincronizacion.exportar_excel') }}">
+        <button class="btn btn-secundario" type="submit">📊 Exportar matriz (Excel)</button>
+    </form>
+    <span id="estado-sync">
+        {% if estado.en_progreso %}⏳ En progreso: {{ estado.paso_actual }}{% endif %}
+    </span>
+</div>
+
+<p class="texto-vacio" style="padding:0 0 12px;">
+    La sincronización revisa 2020-2026 de forma incremental: solo se reprocesan archivos nuevos o
+    modificados (por tamaño/fecha/hash). El repositorio original nunca se modifica.
+</p>
+
+<div class="panel">
+    {% if historial %}
+    <table>
+        <thead><tr><th>Fecha</th><th>Fase</th><th>Duración (s)</th><th>Matrices</th><th>Registros</th><th>Documentos</th><th>Detalle</th></tr></thead>
+        <tbody>
+        {% for h in historial %}
+            <tr>
+                <td>{{ h['fecha_hora'] }}</td>
+                <td>{{ h['fase'] or '—' }}</td>
+                <td>{{ h['duracion_segundos'] if h['duracion_segundos'] is not none else '—' }}</td>
+                <td>{{ h['matrices_procesadas'] if h['matrices_procesadas'] is not none else '—' }}</td>
+                <td>{{ h['registros_importados'] if h['registros_importados'] is not none else '—' }}</td>
+                <td>{{ h['documentos_relacionados'] if h['documentos_relacionados'] is not none else '—' }}</td>
+                <td class="col-objeto">{{ (h['detalle'] or '')[:200] }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="texto-vacio">Todavía no se ha ejecutado ninguna sincronización desde el visualizador.</p>
+    {% endif %}
+</div>
+
+<script>
+(function () {
+    var enProgreso = {{ 'true' if estado.en_progreso else 'false' }};
+    if (!enProgreso) return;
+    var intervalo = setInterval(function () {
+        fetch("{{ url_for('sincronizacion.estado') }}")
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (!d.en_progreso) {
+                    clearInterval(intervalo);
+                    location.reload();
+                } else {
+                    document.getElementById('estado-sync').textContent = '⏳ En progreso: ' + (d.paso_actual || '');
+                }
+            });
+    }, 4000);
+})();
+</script>
+{% endblock %}

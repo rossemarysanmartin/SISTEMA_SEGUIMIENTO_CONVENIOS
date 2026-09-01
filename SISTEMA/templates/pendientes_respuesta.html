@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block titulo %}Pendientes de respuesta — Convenios UTMACH{% endblock %}
+{% block contenido %}
+<h1>⏳ Pendientes de respuesta ({{ pendientes|length }})</h1>
+<p class="texto-vacio" style="padding:0 0 12px;">Ordenado por mayor tiempo de espera. Umbral configurado: {{ umbral }} días hábiles.</p>
+<div class="panel">
+    {% if pendientes %}
+    <table>
+        <thead><tr><th>Solicitud</th><th>Institución</th><th>Tipo de criterio/actuación</th><th>Dependencia</th><th>Enviado</th><th>Días calendario</th><th>Días hábiles</th><th>Responsable</th><th>Fecha límite</th></tr></thead>
+        <tbody>
+        {% for p in pendientes %}
+            <tr onclick="location.href='{{ url_for('solicitudes.ficha', id_solicitud=p['id_solicitud']) }}'" style="cursor:pointer">
+                <td>{{ p['codigo_solicitud'] }}</td>
+                <td class="col-institucion">{{ p['institucion'] }}</td>
+                <td>{{ p['tipo_actuacion'] }}</td>
+                <td>{{ p['dependencia_destino'] or '—' }}</td>
+                <td>{{ p['fecha_envio'] }}</td>
+                <td>{{ p['dias_calendario_esperando'] }}</td>
+                <td>{% if p['alerta'] %}<span class="badge badge-conflicto">⚠ {{ p['dias_habiles_esperando'] }}</span>{% else %}{{ p['dias_habiles_esperando'] }}{% endif %}</td>
+                <td>{{ p['responsable'] or '—' }}</td>
+                <td>{{ p['fecha_limite_respuesta'] or '—' }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="texto-vacio">No hay actuaciones pendientes de respuesta.</p>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block titulo %}Nueva solicitud — Convenios UTMACH{% endblock %}
+{% block contenido %}
+<a class="enlace-volver" href="{{ url_for('solicitudes.lista') }}">&larr; Volver a solicitudes</a>
+<h1>➕ Nueva solicitud</h1>
+
+<form method="post" class="panel" style="display:flex; flex-direction:column; gap:14px; max-width:560px;">
+    <div class="campo"><label>Fecha de ingreso *</label><input type="date" name="fecha_ingreso" value="{{ datos.fecha_ingreso or '' }}" required autofocus></div>
+
+    <div class="campo">
+        <label>Medio de ingreso *</label>
+        <select name="medio_ingreso" id="medio_ingreso" required onchange="actualizarCamposMedio()">
+            <option value="">Seleccione...</option>
+            {% for m in medios %}<option value="{{ m['codigo'] }}">{{ m['icono'] }} {{ m['etiqueta'] }}</option>{% endfor %}
+        </select>
+    </div>
+
+    <div class="campo"><label>Institución / contraparte *</label><input type="text" name="institucion" value="{{ datos.institucion or '' }}" required></div>
+    <div class="campo"><label>Asunto</label><input type="text" name="asunto" value="{{ datos.asunto or '' }}"></div>
+
+    <div class="campo">
+        <label>Tipo de convenio</label>
+        <select name="tipo_convenio_solicitado">
+            <option value="">—</option>
+            {% for t in tipos_convenio %}<option value="{{ t['nombre'] }}">{{ t['nombre'] }}</option>{% endfor %}
+        </select>
+    </div>
+
+    <div class="campo">
+        <label>Dependencia solicitante</label>
+        <select name="dependencia_solicitante">
+            <option value="">—</option>
+            {% for d in dependencias %}<option value="{{ d['nombre'] }}">{{ d['nombre'] }}</option>{% endfor %}
+        </select>
+    </div>
+
+    <div class="campo">
+        <label>Responsable inicial</label>
+        <input type="text" name="responsable_inicial" list="lista_responsables" value="{{ datos.responsable_inicial or '' }}">
+        <datalist id="lista_responsables">{% for r in responsables %}<option value="{{ r['nombre'] }}">{% endfor %}</datalist>
+    </div>
+
+    <div class="campo"><label>Observación breve</label><textarea name="observaciones" rows="2">{{ datos.observaciones or '' }}</textarea></div>
+
+    <div class="campo" style="flex-direction:row; align-items:center; gap:8px;">
+        <input type="checkbox" name="recibido_en_vinculacion" id="recibido" style="min-width:auto;">
+        <label for="recibido" style="margin:0;">☑ Recibido en Dirección de Vinculación (registra automáticamente la primera actuación)</label>
+    </div>
+
+    <details>
+        <summary style="cursor:pointer; color:var(--azul-utmach); font-size:0.9rem;">Información adicional</summary>
+        <div style="display:flex; flex-direction:column; gap:10px; margin-top:12px;">
+            <div class="campo"><label>Hora de ingreso</label><input type="time" name="hora_ingreso" value="{{ datos.hora_ingreso or '' }}"></div>
+            <div class="campo"><label>Persona remitente</label><input type="text" name="persona_contacto" value="{{ datos.persona_contacto or '' }}"></div>
+
+            <div id="grupo_correo" style="display:none; flex-direction:column; gap:10px;">
+                <div class="campo"><label>Correo</label><input type="email" name="correo_contacto" value="{{ datos.correo_contacto or '' }}"></div>
+                <div class="campo"><label>Remitente del correo</label><input type="text" name="remitente_correo" value="{{ datos.remitente_correo or '' }}"></div>
+                <div class="campo"><label>Fecha del correo</label><input type="date" name="fecha_correo" value="{{ datos.fecha_correo or '' }}"></div>
+                <div class="campo"><label>Referencia de correo</label><input type="text" name="referencia_correo" value="{{ datos.referencia_correo or '' }}"></div>
+            </div>
+
+            <div id="grupo_sistema" style="display:none; flex-direction:column; gap:10px;">
+                <div class="campo"><label>Número de trámite institucional</label><input type="text" name="numero_tramite_institucional" value="{{ datos.numero_tramite_institucional or '' }}"></div>
+            </div>
+
+            <div class="campo"><label>Registrado por</label><input type="text" name="registrado_por" value="{{ datos.registrado_por or '' }}"></div>
+        </div>
+    </details>
+
+    <div>
+        <button class="btn" type="submit">Guardar solicitud</button>
+        <a class="btn btn-secundario" href="{{ url_for('solicitudes.lista') }}">Cancelar</a>
+    </div>
+</form>
+
+<script>
+function actualizarCamposMedio() {
+    var medio = document.getElementById('medio_ingreso').value;
+    document.getElementById('grupo_correo').style.display = (medio === 'CORREO_ELECTRONICO') ? 'flex' : 'none';
+    document.getElementById('grupo_sistema').style.display = (medio === 'SISTEMA_INSTITUCIONAL') ? 'flex' : 'none';
+}
+</script>
+{% endblock %}

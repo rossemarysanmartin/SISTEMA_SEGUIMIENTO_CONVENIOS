@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block titulo %}{{ titulo }} — Configuración{% endblock %}
+{% block contenido %}
+<a class="enlace-volver" href="{{ url_for('configuracion.inicio') }}">&larr; Volver a Configuración</a>
+<h1>{{ titulo }}</h1>
+<p class="texto-vacio" style="padding:0 0 10px;">No se elimina físicamente ningún valor ya utilizado — solo se activa/desactiva, edita o reordena.</p>
+
+<div class="panel">
+    <table>
+        <thead><tr><th>Orden</th><th>Nombre</th>{% if es_responsables %}<th>Cargo</th><th>Dependencia</th>{% endif %}<th>Activo</th><th>Acciones</th></tr></thead>
+        <tbody>
+        {% for f in filas %}
+            <tr>
+                <td>
+                    <form method="post" action="{{ url_for('configuracion.catalogo_mover', slug=slug, id_=f['id'], direccion='subir') }}" style="display:inline;"><button class="btn btn-secundario" style="padding:2px 6px;" type="submit">▲</button></form>
+                    <form method="post" action="{{ url_for('configuracion.catalogo_mover', slug=slug, id_=f['id'], direccion='bajar') }}" style="display:inline;"><button class="btn btn-secundario" style="padding:2px 6px;" type="submit">▼</button></form>
+                </td>
+                <td>
+                    <form method="post" action="{{ url_for('configuracion.catalogo_editar', slug=slug, id_=f['id']) }}" style="display:flex; gap:6px;">
+                        <input type="text" name="texto" value="{{ f[campo_editable] }}" style="min-width:180px;">
+                        <button class="btn btn-secundario" type="submit">Guardar</button>
+                    </form>
+                </td>
+                {% if es_responsables %}
+                <td>{{ f['cargo'] or '—' }}</td>
+                <td>{{ f['dependencia'] or '—' }}</td>
+                {% endif %}
+                <td>{{ 'Sí' if f['activo'] else 'No' }}</td>
+                <td>
+                    {% if f['activo'] %}
+                    <form method="post" action="{{ url_for('configuracion.catalogo_desactivar', slug=slug, id_=f['id']) }}" style="display:inline;"><button class="btn btn-secundario" type="submit">Desactivar</button></form>
+                    {% else %}
+                    <form method="post" action="{{ url_for('configuracion.catalogo_activar', slug=slug, id_=f['id']) }}" style="display:inline;"><button class="btn btn-secundario" type="submit">Activar</button></form>
+                    {% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<h2>Agregar nuevo</h2>
+<div class="panel">
+    <form method="post" action="{{ url_for('configuracion.catalogo_crear', slug=slug) }}" style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
+        <div class="campo"><label>Nombre *</label><input type="text" name="{{ campo_editable }}" required></div>
+        {% if es_responsables %}
+        <div class="campo"><label>Cargo</label><input type="text" name="cargo"></div>
+        <div class="campo"><label>Dependencia</label><input type="text" name="dependencia"></div>
+        {% endif %}
+        <button class="btn" type="submit">Agregar</button>
+    </form>
+</div>
+{% endblock %}

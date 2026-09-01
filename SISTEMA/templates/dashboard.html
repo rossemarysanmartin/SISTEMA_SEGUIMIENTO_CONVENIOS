@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block titulo %}Inicio — Convenios UTMACH{% endblock %}
+{% block contenido %}
+<h1>Convenios suscritos</h1>
+
+<div class="tarjetas">
+    <a class="tarjeta" href="{{ url_for('convenios.lista') }}">
+        <div class="tarjeta-valor">{{ contadores.total }}</div>
+        <div class="tarjeta-etiqueta">TOTAL DE CONVENIOS</div>
+    </a>
+    <a class="tarjeta" href="{{ url_for('convenios.lista', estado_vigencia='VIGENTE') }}">
+        <div class="tarjeta-valor">🟢 {{ contadores.vigentes }}</div>
+        <div class="tarjeta-etiqueta">VIGENTES</div>
+    </a>
+    <a class="tarjeta" href="{{ url_for('convenios.proximos_a_vencer') }}">
+        <div class="tarjeta-valor">🟡 {{ contadores.proximos_a_vencer }}</div>
+        <div class="tarjeta-etiqueta">PRÓXIMOS A VENCER</div>
+    </a>
+    <a class="tarjeta" href="{{ url_for('convenios.vencidos') }}">
+        <div class="tarjeta-valor">🔴 {{ contadores.vencidos }}</div>
+        <div class="tarjeta-etiqueta">VENCIDOS</div>
+    </a>
+    <a class="tarjeta" href="{{ url_for('convenios.lista', estado_vigencia='SIN_INFORMACION') }}">
+        <div class="tarjeta-valor">⚪ {{ contadores.sin_informacion }}</div>
+        <div class="tarjeta-etiqueta">SIN INFORMACIÓN DE VIGENCIA</div>
+    </a>
+    <a class="tarjeta" href="{{ url_for('convenios.revision_pendiente') }}">
+        <div class="tarjeta-valor">🟠 {{ contadores.requieren_revision }}</div>
+        <div class="tarjeta-etiqueta">REQUIEREN REVISIÓN</div>
+    </a>
+    <a class="tarjeta" href="{{ url_for('convenios.lista', tiene_adenda='SI') }}">
+        <div class="tarjeta-valor">🔵 {{ contadores.posible_adenda }}</div>
+        <div class="tarjeta-etiqueta">POSIBLE ADENDA</div>
+    </a>
+</div>
+
+<h2>Próximos a vencer (menor días restantes primero)</h2>
+<div class="panel">
+    {% if proximos %}
+    <table>
+        <thead><tr><th>Institución</th><th>Tipo</th><th>Vencimiento</th><th>Días restantes</th><th>Administrador</th></tr></thead>
+        <tbody>
+        {% for f in proximos %}
+            <tr onclick="location.href='{{ url_for('convenios.ficha', id_sistema=f['id_sistema']) }}'" style="cursor:pointer">
+                <td class="col-institucion">{{ f['institucion'] }}</td>
+                <td>{{ f['tipo_instrumento'] or '—' }}</td>
+                <td>{{ f['fecha_finalizacion'] or '—' }}</td>
+                <td>{{ f['dias_para_vencimiento'] }}</td>
+                <td>{{ f['administrador'] or '—' }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    <p><a class="btn btn-secundario" href="{{ url_for('convenios.proximos_a_vencer') }}">Ver todos</a></p>
+    {% else %}
+    <p class="texto-vacio">No hay convenios próximos a vencer registrados.</p>
+    {% endif %}
+</div>
+
+<h1>Solicitudes en trámite</h1>
+<p class="texto-vacio" style="padding:0 0 12px;">Universo independiente de los convenios ya suscritos — trámites que todavía no llegan a firmarse.</p>
+<div class="tarjetas">
+    <a class="tarjeta" href="{{ url_for('solicitudes.lista') }}">
+        <div class="tarjeta-valor">{{ contadores_solicitudes.total }}</div>
+        <div class="tarjeta-etiqueta">TOTAL EN TRÁMITE</div>
+    </a>
+    <a class="tarjeta" href="{{ url_for('solicitudes.lista', estado_actual='RECIBIDA') }}">
+        <div class="tarjeta-valor">{{ contadores_solicitudes.recibidas }}</div>
+        <div class="tarjeta-etiqueta">RECIBIDAS</div>
+    </a>
+    <a class="tarjeta" href="{{ url_for('solicitudes.lista', estado_actual='EN_GESTION') }}">
+        <div class="tarjeta-valor">{{ contadores_solicitudes.en_gestion }}</div>
+        <div class="tarjeta-etiqueta">EN GESTIÓN</div>
+    </a>
+    <a class="tarjeta" href="{{ url_for('pendientes.pendientes_de_respuesta') }}">
+        <div class="tarjeta-valor">⏳ {{ contadores_solicitudes.pendientes_respuesta }}</div>
+        <div class="tarjeta-etiqueta">PENDIENTES</div>
+    </a>
+    <a class="tarjeta" href="{{ url_for('solicitudes.lista', etapa_actual='REVISION_JURIDICA') }}">
+        <div class="tarjeta-valor">{{ contadores_solicitudes.en_juridico }}</div>
+        <div class="tarjeta-etiqueta">EN JURÍDICO</div>
+    </a>
+    <a class="tarjeta" href="{{ url_for('solicitudes.lista', etapa_actual='FACTIBILIDAD') }}">
+        <div class="tarjeta-valor">{{ contadores_solicitudes.en_factibilidad }}</div>
+        <div class="tarjeta-etiqueta">EN FACTIBILIDAD</div>
+    </a>
+    <a class="tarjeta" href="{{ url_for('solicitudes.lista', etapa_actual='FIRMA') }}">
+        <div class="tarjeta-valor">{{ contadores_solicitudes.en_firma }}</div>
+        <div class="tarjeta-etiqueta">EN FIRMA</div>
+    </a>
+    <a class="tarjeta" href="{{ url_for('solicitudes.lista', dias_sin_movimiento_min=14) }}">
+        <div class="tarjeta-valor">🔴 {{ contadores_solicitudes.sin_movimiento }}</div>
+        <div class="tarjeta-etiqueta">SIN MOVIMIENTO</div>
+    </a>
+</div>
+
+<h2>Actividad reciente</h2>
+<div class="panel">
+    {% if actividad_reciente %}
+    {% for a in actividad_reciente %}
+    <div style="padding:5px 0; border-bottom:1px solid var(--gris-borde); font-size:0.85rem;">
+        <strong>{{ a['fecha'] }}{% if a['hora'] %} {{ a['hora'] }}{% endif %}</strong> —
+        <a href="{{ url_for('solicitudes.ficha', id_solicitud=a['id_solicitud']) }}">{{ a['codigo_solicitud'] }}</a>
+        {{ ICONOS_ACTUACION.get(a['tipo_actuacion'], '❔') }} {{ a['tipo_actuacion'].replace('_',' ').title() }}
+    </div>
+    {% endfor %}
+    {% else %}
+    <p class="texto-vacio">Sin actividad registrada todavía.</p>
+    {% endif %}
+    <p style="margin-top:10px;"><a class="btn btn-secundario" href="{{ url_for('trabajo.mi_trabajo') }}">🗓 Ver mi trabajo</a></p>
+</div>
+{% endblock %}

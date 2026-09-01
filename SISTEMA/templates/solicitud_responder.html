@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block titulo %}Registrar respuesta — {{ s['codigo_solicitud'] }}{% endblock %}
+{% block contenido %}
+<a class="enlace-volver" href="{{ url_for('solicitudes.ficha', id_solicitud=s['id']) }}">&larr; Volver a {{ s['codigo_solicitud'] }}</a>
+<h1>📥 Registrar respuesta</h1>
+<p class="texto-vacio" style="padding:0 0 10px;">
+    Responde a: <strong>{{ original['tipo_actuacion'] }}</strong> enviado el {{ original['fecha'] }}
+    {% if original['dependencia_destino'] %}a {{ original['dependencia_destino'] }}{% endif %}.
+    No es necesario volver a buscar cuál trámite es — ya está vinculado.
+</p>
+
+<form method="post" class="panel" style="display:flex; flex-direction:column; gap:12px; max-width:520px;">
+    <div class="campo"><label>Fecha de recepción</label><input type="date" name="fecha" value="{{ hoy }}" autofocus></div>
+    <div class="campo">
+        <label>Resultado</label>
+        <select name="resultado">
+            <option value="FAVORABLE">Favorable</option>
+            <option value="FAVORABLE_CON_OBSERVACIONES">Favorable con observaciones</option>
+            <option value="NO_FAVORABLE">No favorable</option>
+            <option value="INFORMATIVO">Informativo</option>
+            <option value="OTRO">Otro</option>
+        </select>
+    </div>
+    <div class="campo"><label>Observación breve</label><textarea name="descripcion" rows="2"></textarea></div>
+
+    <details>
+        <summary style="cursor:pointer; color:var(--azul-utmach); font-size:0.85rem;">Más opciones</summary>
+        <div style="display:flex; flex-direction:column; gap:8px; margin-top:10px;">
+            <div class="campo">
+                <label>Estado nuevo (opcional)</label>
+                <select name="estado_nuevo"><option value="">Mantener actual ({{ s['estado_actual'] }})</option>{% for e in catalogo_estados %}<option value="{{ e['codigo'] }}">{{ e['etiqueta'] }}</option>{% endfor %}</select>
+            </div>
+            <div class="campo">
+                <label>Etapa nueva (opcional)</label>
+                <select name="etapa_nueva"><option value="">Mantener actual ({{ s['etapa_actual'] or '—' }})</option>{% for e in catalogo_etapas %}<option value="{{ e['codigo'] }}">{{ e['etiqueta'] }}</option>{% endfor %}</select>
+            </div>
+        </div>
+    </details>
+
+    <div>
+        <button class="btn" type="submit">Guardar respuesta</button>
+        <a class="btn btn-secundario" href="{{ url_for('solicitudes.ficha', id_solicitud=s['id']) }}">Cancelar</a>
+    </div>
+</form>
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block titulo %}Configuración — Convenios UTMACH{% endblock %}
+{% block contenido %}
+<h1>⚙️ Configuración</h1>
+
+<div class="ficha-secciones">
+    <div class="panel">
+        <h2 style="margin-top:0;">Semáforo y pendientes</h2>
+        <p class="texto-vacio" style="padding:0 0 8px;">Valores actuales: 🟢 ≤{{ config.semaforo_normal_max }} · 🟡 ≤{{ config.semaforo_atencion_max }} · 🟠 ≤{{ config.semaforo_demora_max }} · 🔴 más · Pendientes: {{ config.umbral_dias_habiles_pendiente_respuesta }} días hábiles.</p>
+        <a class="btn" href="{{ url_for('configuracion.semaforo') }}">Editar valores</a>
+    </div>
+
+    {% for slug, cfg in catalogos.items() %}
+    <div class="panel">
+        <h2 style="margin-top:0;">{{ cfg.titulo }}</h2>
+        <a class="btn btn-secundario" href="{{ url_for('configuracion.catalogo', slug=slug) }}">Gestionar</a>
+    </div>
+    {% endfor %}
+
+    <div class="panel">
+        <h2 style="margin-top:0;">Repositorio documental</h2>
+        <p style="word-break:break-all;">{{ ruta_base_convenios }}</p>
+        <p class="texto-vacio">Solo lectura — visible aquí como referencia, no editable desde la interfaz.</p>
+    </div>
+
+    <div class="panel">
+        <h2 style="margin-top:0;">📊 Dashboard ejecutivo portable</h2>
+        <p class="texto-vacio" style="padding:0 0 8px;">Genera un archivo HTML autocontenido (sin Python ni Flask) para enviar a la Dirección/Jefatura. Es una fotografía de los datos al momento de generarlo.</p>
+        <form method="post" action="{{ url_for('configuracion.generar_dashboard_ejecutivo') }}">
+            <label style="display:block; margin-bottom:8px; font-size:0.85rem;">
+                <input type="checkbox" name="guardar_historico"> Guardar también una copia histórica con fecha
+            </label>
+            <button type="submit" class="btn">Generar dashboard ejecutivo</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

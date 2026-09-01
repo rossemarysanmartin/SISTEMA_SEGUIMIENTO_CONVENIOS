@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block titulo %}Buscar "{{ texto }}" — Convenios UTMACH{% endblock %}
+{% block contenido %}
+<h1>Resultados para "{{ texto }}"</h1>
+
+<h2>📩 Solicitudes ({{ resultados.solicitudes|length }})</h2>
+<div class="panel">
+    {% if resultados.solicitudes %}
+    <table>
+        <thead><tr><th></th><th>Código</th><th>Institución</th><th>Estado</th><th>Etapa</th></tr></thead>
+        <tbody>
+        {% for r in resultados.solicitudes %}
+            <tr onclick="location.href='{{ url_for('solicitudes.ficha', id_solicitud=r['id']) }}'" style="cursor:pointer">
+                <td><span class="badge badge-adenda">SOLICITUD</span></td>
+                <td>{{ r['codigo_solicitud'] }}</td>
+                <td class="col-institucion">{{ r['institucion'] }}</td>
+                <td>{{ r['estado_actual'] }}</td>
+                <td>{{ r['etapa_actual'] or '—' }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="texto-vacio">Sin resultados.</p>
+    {% endif %}
+</div>
+
+<h2>Convenios ({{ resultados.convenios|length }})</h2>
+<div class="panel">
+    {% if resultados.convenios %}
+    <table>
+        <thead><tr><th></th><th>Código</th><th>Año</th><th>Institución</th><th>Estado</th></tr></thead>
+        <tbody>
+        {% for r in resultados.convenios %}
+            <tr onclick="location.href='{{ url_for('convenios.ficha', id_sistema=r['id_sistema']) }}'" style="cursor:pointer">
+                <td><span class="badge badge-revision">CONVENIO</span></td>
+                <td>{{ r['codigo_original'] or '—' }}</td>
+                <td>{{ r['anio'] }}</td>
+                <td class="col-institucion">{{ r['institucion'] }}</td>
+                <td>{{ r['estado_vigencia'] or '—' }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="texto-vacio">Sin resultados.</p>
+    {% endif %}
+</div>
+{% endblock %}

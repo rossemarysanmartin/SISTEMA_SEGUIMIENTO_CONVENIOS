@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block titulo %}Informes de solicitudes — Convenios UTMACH{% endblock %}
+{% block contenido %}
+<a class="enlace-volver" href="{{ url_for('solicitudes.lista') }}">&larr; Volver a solicitudes</a>
+<h1>Informes de solicitudes</h1>
+
+<div class="tarjetas">
+    <div class="tarjeta"><div class="tarjeta-valor">{{ abiertas_cerradas.abiertas }}</div><div class="tarjeta-etiqueta">ABIERTAS</div></div>
+    <div class="tarjeta"><div class="tarjeta-valor">{{ abiertas_cerradas.cerradas }}</div><div class="tarjeta-etiqueta">CERRADAS</div></div>
+    <div class="tarjeta"><div class="tarjeta-valor">{{ tiempo_primera_actuacion if tiempo_primera_actuacion is not none else '—' }}</div><div class="tarjeta-etiqueta">DÍAS PROM. HASTA 1ª ACTUACIÓN</div></div>
+    <div class="tarjeta"><div class="tarjeta-valor">{{ tiempo_total if tiempo_total is not none else '—' }}</div><div class="tarjeta-etiqueta">DÍAS PROM. TOTAL (CERRADAS)</div></div>
+</div>
+
+<div class="ficha-secciones">
+    <div class="panel">
+        <h2>Ingresadas por semana</h2>
+        <table><thead><tr><th>Semana</th><th>Total</th></tr></thead><tbody>
+        {% for r in por_semana %}<tr><td>{{ r['semana'] }}</td><td>{{ r['total'] }}</td></tr>{% else %}<tr><td colspan="2" class="texto-vacio">Sin datos</td></tr>{% endfor %}
+        </tbody></table>
+    </div>
+    <div class="panel">
+        <h2>Pendientes por dependencia</h2>
+        <table><thead><tr><th>Dependencia</th><th>Total</th></tr></thead><tbody>
+        {% for r in pendientes_por_dependencia %}<tr><td>{{ r['dependencia'] }}</td><td>{{ r['total'] }}</td></tr>{% else %}<tr><td colspan="2" class="texto-vacio">Sin datos</td></tr>{% endfor %}
+        </tbody></table>
+    </div>
+    <div class="panel">
+        <h2>Carga por responsable (activas, no cerradas)</h2>
+        <table><thead><tr><th>Responsable</th><th>Total</th></tr></thead><tbody>
+        {% for r in carga_por_responsable %}<tr><td>{{ r['responsable_actual'] }}</td><td>{{ r['total'] }}</td></tr>{% else %}<tr><td colspan="2" class="texto-vacio">Sin datos</td></tr>{% endfor %}
+        </tbody></table>
+    </div>
+    <div class="panel">
+        <h2>Por mes de ingreso</h2>
+        <table><thead><tr><th>Mes</th><th>Total</th></tr></thead><tbody>
+        {% for r in por_mes %}<tr><td>{{ r['mes'] }}</td><td>{{ r['total'] }}</td></tr>{% else %}<tr><td colspan="2" class="texto-vacio">Sin datos</td></tr>{% endfor %}
+        </tbody></table>
+    </div>
+    <div class="panel">
+        <h2>Por medio de ingreso</h2>
+        <table><thead><tr><th>Medio</th><th>Total</th></tr></thead><tbody>
+        {% for r in por_medio %}<tr><td>{{ r['medio_ingreso'] }}</td><td>{{ r['total'] }}</td></tr>{% else %}<tr><td colspan="2" class="texto-vacio">Sin datos</td></tr>{% endfor %}
+        </tbody></table>
+    </div>
+    <div class="panel">
+        <h2>Por responsable</h2>
+        <table><thead><tr><th>Responsable</th><th>Total</th></tr></thead><tbody>
+        {% for r in por_responsable %}<tr><td>{{ r['responsable_actual'] }}</td><td>{{ r['total'] }}</td></tr>{% else %}<tr><td colspan="2" class="texto-vacio">Sin datos</td></tr>{% endfor %}
+        </tbody></table>
+    </div>
+    <div class="panel">
+        <h2>Por estado</h2>
+        <table><thead><tr><th>Estado</th><th>Total</th></tr></thead><tbody>
+        {% for r in por_estado %}<tr><td>{{ r['estado_actual'] }}</td><td>{{ r['total'] }}</td></tr>{% else %}<tr><td colspan="2" class="texto-vacio">Sin datos</td></tr>{% endfor %}
+        </tbody></table>
+    </div>
+    <div class="panel">
+        <h2>Por etapa</h2>
+        <table><thead><tr><th>Etapa</th><th>Total</th></tr></thead><tbody>
+        {% for r in por_etapa %}<tr><td>{{ r['etapa_actual'] or '—' }}</td><td>{{ r['total'] }}</td></tr>{% else %}<tr><td colspan="2" class="texto-vacio">Sin datos</td></tr>{% endfor %}
+        </tbody></table>
+    </div>
+</div>
+{% endblock %}

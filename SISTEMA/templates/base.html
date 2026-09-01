@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block titulo %}Convenios UTMACH{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/estilo.css') }}">
+</head>
+<body>
+    <header class="cabecera">
+        <div class="cabecera-marca">
+            <span class="cabecera-titulo">Sistema de Seguimiento de Convenios</span>
+            <span class="cabecera-subtitulo">Universidad Técnica de Machala</span>
+        </div>
+        <nav class="nav-principal">
+            <a href="{{ url_for('dashboard.inicio') }}">Inicio</a>
+            <a href="{{ url_for('convenios.lista') }}">Convenios</a>
+            <a href="{{ url_for('solicitudes.lista') }}">📩 Solicitudes</a>
+            <a href="{{ url_for('pendientes.pendientes_de_respuesta') }}">⏳ Pendientes</a>
+            <a href="{{ url_for('trabajo.mi_trabajo') }}">🗓 Mi trabajo</a>
+            <a href="{{ url_for('convenios.proximos_a_vencer') }}">Próximos a vencer</a>
+            <a href="{{ url_for('convenios.vencidos') }}">Vencidos</a>
+            <a href="{{ url_for('convenios.revision_pendiente') }}">Revisión</a>
+            <a href="{{ url_for('sincronizacion.historial') }}">Sincronización</a>
+            <a href="{{ url_for('configuracion.inicio') }}">⚙️ Configuración</a>
+        </nav>
+        <form class="busqueda-global" method="get" action="{{ url_for('busqueda.buscar') }}">
+            <input type="text" name="q" placeholder="Buscar convenio o solicitud..." value="{{ request.args.get('q', '') if request.endpoint == 'busqueda.buscar' else '' }}">
+            <button type="submit" aria-label="Buscar">🔍</button>
+        </form>
+    </header>
+    <main class="contenido">
+        {% with mensajes = get_flashed_messages(with_categories=true) %}
+            {% if mensajes %}
+                {% for categoria, mensaje in mensajes %}
+                    <div class="alerta {{ 'alerta-conflicto' if categoria=='error' else 'alerta-info' }}">{{ mensaje }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        {% block contenido %}{% endblock %}
+    </main>
+    <footer class="pie">
+        Fuente documental de solo lectura — ningún archivo original es modificado por este sistema.
+    </footer>
+</body>
+</html>

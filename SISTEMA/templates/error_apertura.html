@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block titulo %}No se pudo abrir — Convenios UTMACH{% endblock %}
+{% block contenido %}
+<a class="enlace-volver" href="javascript:history.back()">&larr; Volver</a>
+<div class="alerta alerta-conflicto">
+    No se pudo abrir el elemento solicitado: {{ mensaje }}
+</div>
+{% endblock %}

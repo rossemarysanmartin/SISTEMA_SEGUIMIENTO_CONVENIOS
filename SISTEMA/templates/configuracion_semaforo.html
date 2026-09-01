@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block titulo %}Semáforo — Configuración{% endblock %}
+{% block contenido %}
+<a class="enlace-volver" href="{{ url_for('configuracion.inicio') }}">&larr; Volver a Configuración</a>
+<h1>Semáforo de seguimiento y pendientes</h1>
+<p class="texto-vacio" style="padding:0 0 10px;">Valores administrativos configurables, no normas legales. Se guardan en la base de datos — no es necesario editar ningún archivo.</p>
+
+<form method="post" class="panel" style="display:flex; flex-direction:column; gap:12px; max-width:420px;">
+    <div class="campo"><label>🟢 Normal hasta (días)</label><input type="number" name="semaforo_normal_max" value="{{ config.semaforo_normal_max }}" min="0" required></div>
+    <div class="campo"><label>🟡 Atención hasta (días)</label><input type="number" name="semaforo_atencion_max" value="{{ config.semaforo_atencion_max }}" min="1" required></div>
+    <div class="campo"><label>🟠 Demora hasta (días)</label><input type="number" name="semaforo_demora_max" value="{{ config.semaforo_demora_max }}" min="1" required></div>
+    <p class="texto-vacio" style="padding:0;">🔴 Revisar: más de los días de "Demora".</p>
+    <div class="campo"><label>Umbral de pendientes de respuesta (días hábiles)</label><input type="number" name="umbral_dias_habiles_pendiente_respuesta" value="{{ config.umbral_dias_habiles_pendiente_respuesta }}" min="1" required></div>
+    <div>
+        <button class="btn" type="submit">Guardar</button>
+        <a class="btn btn-secundario" href="{{ url_for('configuracion.inicio') }}">Cancelar</a>
+    </div>
+</form>
+{% endblock %}
