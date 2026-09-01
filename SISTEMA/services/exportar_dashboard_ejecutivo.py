@@ -1,11 +1,5 @@
-"""Genera el Dashboard Ejecutivo Portable (Fase 6.5): un HTML autocontenido,
-de SOLO CONSULTA, con una fotografia de convenios.db en el momento de la
-generacion. No depende de Internet, Python, Flask ni SQLite para abrirse.
-
-Reglas de privacidad (seccion 5 y 24 de la especificacion): el HTML generado
-NUNCA debe contener rutas absolutas del equipo, logs, trazas tecnicas,
-credenciales ni configuracion interna. `verificar_sin_datos_sensibles` se
-ejecuta siempre antes de escribir el archivo.
+"""Genera el Dashboard Ejecutivo y Web Pública (HTML autocontenido).
+Refleja con total fidelidad la interfaz completa del Visualizador Web de Convenios UTMACH.
 """
 
 import json
@@ -26,7 +20,6 @@ _ETIQUETAS_ESTADO_VIGENCIA = {
     "SIN_INFORMACION": "Sin información suficiente",
 }
 
-# Patrones que NUNCA deben aparecer en el HTML exportado (seccion 24).
 _PATRONES_PROHIBIDOS = [
     re.compile(r"[A-Za-z]:\\Users", re.IGNORECASE),
     re.compile(r"[A-Za-z]:\\\\Users", re.IGNORECASE),
@@ -117,7 +110,8 @@ def _contadores_convenios(convenios: list) -> dict:
         "proximos_a_vencer": sum(1 for c in convenios if c["estado_vigencia"] == "PROXIMO_A_VENCER"),
         "vencidos": sum(1 for c in convenios if c["estado_vigencia"] == "VENCIDO"),
         "sin_informacion": sum(1 for c in convenios if c["estado_vigencia"] == "SIN_INFORMACION"),
-        "revision_pendiente": sum(1 for c in convenios if c["revision"]),
+        "requieren_revision": sum(1 for c in convenios if c["revision"]),
+        "posible_adenda": sum(1 for c in convenios if c["adenda"] in ("SI", "POR_REVISAR")),
     }
 
 
@@ -142,7 +136,7 @@ def _graficos_convenios(convenios: list) -> dict:
 
 def _recolectar_solicitudes(conn, config_efectiva) -> tuple:
     if not _tiene_tabla(conn, "solicitudes"):
-        return [], {"total": 0, "en_gestion": 0, "pendientes_respuesta": 0, "en_juridico": 0,
+        return [], {"total": 0, "recibidas": 0, "en_gestion": 0, "pendientes_respuesta": 0, "en_juridico": 0,
                      "en_factibilidad": 0, "en_firma": 0, "sin_movimiento": 0, "suscritas": 0}
 
     etiquetas_actuacion = {r["codigo"]: r["etiqueta"] for r in conn.execute("SELECT codigo, etiqueta FROM catalogo_actuaciones")}
@@ -195,7 +189,9 @@ def _recolectar_solicitudes(conn, config_efectiva) -> tuple:
             "responsable": f["responsable_actual"] or "—",
             "pendiente_actual": pendiente_actual,
             "estado": f["estado_etiqueta"],
+            "estado_codigo": f["estado_actual"],
             "etapa": f["etapa_etiqueta"],
+            "etapa_codigo": f["etapa_actual"],
             "dias_sin_movimiento": dias_sin_movimiento if dias_sin_movimiento is not None else "—",
             "semaforo": semaforo,
             "trazabilidad": trazabilidad,
@@ -208,6 +204,15 @@ def _recolectar_solicitudes(conn, config_efectiva) -> tuple:
 def recolectar_datos(conn, config_efectiva) -> dict:
     convenios = _recolectar_convenios(conn)
     solicitudes, contadores_solicitudes = _recolectar_solicitudes(conn, config_efectiva)
+
+    anios = sorted(list({c["anio"] for c in convenios if c["anio"]}), reverse=True)
+    tipos = sorted(list({c["tipo"] for c in convenios if c["tipo"] and c["tipo"] != "—"}))
+    estados = ["VIGENTE", "PROXIMO_A_VENCER", "VENCIDO", "SIN_INFORMACION"]
+    administradores = sorted(list({c["administrador"] for c in convenios if c["administrador"] and c["administrador"] != "—"}))
+
+    proximos = [c for c in convenios if c["dias"] is not None and c["estado_vigencia"] == "PROXIMO_A_VENCER"]
+    proximos.sort(key=lambda x: int(x["dias"]))
+
     return {
         "fecha_corte": datetime.now().strftime("%d/%m/%Y %H:%M"),
         "convenios": convenios,
@@ -215,6 +220,13 @@ def recolectar_datos(conn, config_efectiva) -> dict:
         "graficos": _graficos_convenios(convenios),
         "solicitudes": solicitudes,
         "contadores_solicitudes": contadores_solicitudes,
+        "disponibles": {
+            "anios": anios,
+            "tipos": tipos,
+            "estados": estados,
+            "administradores": administradores,
+        },
+        "proximos_top": proximos[:15],
     }
 
 
@@ -236,9 +248,6 @@ def generar_html(datos: dict) -> str:
 
 
 def generar_dashboard_ejecutivo(conn, config, config_efectiva, guardar_historico: bool = False) -> Path:
-    """Orquesta la exportacion completa: recolectar -> generar HTML -> verificar
-    privacidad -> escribir SOLO dentro de DASHBOARD_EJECUTIVO. Nunca toca la
-    base de datos ni el repositorio original (solo lee)."""
     datos = recolectar_datos(conn, config_efectiva)
     html = generar_html(datos)
     verificar_sin_datos_sensibles(html)
@@ -255,7 +264,6 @@ def generar_dashboard_ejecutivo(conn, config, config_efectiva, guardar_historico
         nombre_historico = f"DASHBOARD_CONVENIOS_UTMACH_{date.today().isoformat()}.html"
         shutil.copy2(ruta_salida, ruta_historico_dir / nombre_historico)
 
-    # Mantener sincronizado index.html en la raiz para GitHub Pages
     try:
         ruta_index_raiz = config.ruta_sistema_seguimiento / "index.html"
         shutil.copy2(ruta_salida, ruta_index_raiz)
@@ -270,647 +278,1023 @@ _PLANTILLA_HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dashboard Ejecutivo — Convenios UTMACH</title>
+<title>Sistema de Seguimiento de Convenios — UTMACH</title>
 <style>
 :root {
-    --azul: #1c3d5a; --azul-claro: #2f6690; --gris-fondo: #f4f6f8; --gris-borde: #dbe1e6;
-    --texto: #22303c; --texto-suave: #5b6b78; --verde: #2e7d32; --amarillo: #b8860b;
-    --naranja: #c1622a; --rojo: #b3261e; --blanco: #ffffff;
+    --azul-utmach: #1b3a63;
+    --azul-oscuro: #10233d;
+    --gris-fondo: #f4f6f8;
+    --gris-borde: #d9dfe4;
+    --gris-texto: #2b2f33;
+    --verde: #1f8a4c;
+    --amarillo: #b8860b;
+    --rojo: #b3261e;
+    --naranja: #c2660d;
+    --azul-info: #2563a8;
+    --blanco: #ffffff;
 }
 * { box-sizing: border-box; }
 body {
-    margin: 0; font-family: "Segoe UI", Calibri, Arial, sans-serif; background: var(--gris-fondo);
-    color: var(--texto); line-height: 1.45;
+    margin: 0;
+    font-family: "Segoe UI", Arial, sans-serif;
+    background: var(--gris-fondo);
+    color: var(--gris-texto);
+    font-size: 14px;
+    line-height: 1.45;
 }
-header.cabecera {
-    background: linear-gradient(135deg, var(--azul), var(--azul-claro)); color: #fff;
-    padding: 20px 28px;
+.cabecera {
+    background: var(--azul-utmach);
+    color: var(--blanco);
+    padding: 14px 24px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
 }
-header.cabecera h1 { margin: 0 0 4px; font-size: 1.5rem; }
-header.cabecera p.subtitulo { margin: 0; opacity: 0.9; font-size: 0.95rem; }
+.cabecera-marca { display: flex; flex-direction: column; }
+.cabecera-titulo { font-size: 1.2rem; font-weight: 600; display: block; letter-spacing: -0.2px; }
+.cabecera-subtitulo { font-size: 0.82rem; opacity: 0.85; }
+
+.nav-principal { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.nav-principal a {
+    color: var(--blanco);
+    text-decoration: none;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 0.88rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+.nav-principal a:hover { background: rgba(255,255,255,0.15); }
+.nav-principal a.activo { background: rgba(255,255,255,0.25); font-weight: 600; }
+
+.busqueda-global { display: flex; gap: 0; }
+.busqueda-global input {
+    padding: 7px 12px;
+    border: 1px solid transparent;
+    border-radius: 4px 0 0 4px;
+    font-size: 0.84rem;
+    min-width: 220px;
+    outline: none;
+}
+.busqueda-global button {
+    border: none;
+    background: rgba(255,255,255,0.2);
+    color: var(--blanco);
+    border-radius: 0 4px 4px 0;
+    padding: 0 14px;
+    cursor: pointer;
+    font-size: 0.95rem;
+}
+.busqueda-global button:hover { background: rgba(255,255,255,0.35); }
+
 .franja-corte {
-    background: #eef3f7; border-bottom: 1px solid var(--gris-borde); padding: 8px 28px;
-    font-size: 0.85rem; color: var(--texto-suave);
+    background: #e9eef3;
+    border-bottom: 1px solid var(--gris-borde);
+    padding: 8px 24px;
+    font-size: 0.82rem;
+    color: #515c68;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
 }
-.franja-corte strong { color: var(--azul); }
-nav.menu {
-    display: flex; flex-wrap: wrap; gap: 4px; background: #fff; border-bottom: 1px solid var(--gris-borde);
-    padding: 0 20px; position: sticky; top: 0; z-index: 10;
-}
-nav.menu button {
-    border: none; background: none; padding: 12px 16px; cursor: pointer; font-size: 0.92rem;
-    color: var(--texto-suave); border-bottom: 3px solid transparent; font-weight: 600;
-}
-nav.menu button:hover { color: var(--azul); }
-nav.menu button.activo { color: var(--azul); border-bottom-color: var(--azul-claro); }
-main { padding: 24px 28px 60px; max-width: 1200px; margin: 0 auto; }
+.franja-corte strong { color: var(--azul-utmach); }
+
+.contenido { max-width: 1320px; margin: 0 auto; padding: 22px 24px; }
 .seccion { display: none; }
-.seccion.activa { display: block; }
-h2.titulo-seccion { color: var(--azul); border-bottom: 2px solid var(--gris-borde); padding-bottom: 8px; margin-top: 0; }
-.tarjetas { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin: 16px 0 28px; }
+.seccion.activa { display: block; animation: fadeIn 0.15s ease; }
+@keyframes fadeIn { from { opacity: 0.8; } to { opacity: 1; } }
+
+h1 { font-size: 1.35rem; margin: 0 0 16px; color: var(--azul-oscuro); font-weight: 600; }
+h2 { font-size: 1.1rem; margin: 24px 0 12px; color: var(--azul-oscuro); font-weight: 600; }
+
+.tarjetas {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+}
 .tarjeta {
-    background: #fff; border: 1px solid var(--gris-borde); border-radius: 10px; padding: 16px;
-    text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    background: var(--blanco);
+    border: 1px solid var(--gris-borde);
+    border-radius: 8px;
+    padding: 14px 16px;
+    text-decoration: none;
+    color: inherit;
+    display: block;
+    cursor: pointer;
+    transition: transform 0.1s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
 }
-.tarjeta .valor { font-size: 1.9rem; font-weight: 700; color: var(--azul); }
-.tarjeta .etiqueta { font-size: 0.82rem; color: var(--texto-suave); margin-top: 4px; }
-.tarjeta.vigente .valor { color: var(--verde); }
-.tarjeta.atencion .valor { color: var(--amarillo); }
-.tarjeta.riesgo .valor { color: var(--naranja); }
-.tarjeta.critico .valor { color: var(--rojo); }
-.panel { background: #fff; border: 1px solid var(--gris-borde); border-radius: 10px; padding: 18px; margin-bottom: 22px; }
-.panel h3 { margin-top: 0; color: var(--azul); font-size: 1.05rem; }
-.controles { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; align-items: center; }
-.controles input[type=text], .controles select {
-    padding: 8px 10px; border: 1px solid var(--gris-borde); border-radius: 6px; font-size: 0.9rem;
+.tarjeta:hover {
+    border-color: var(--azul-utmach);
+    transform: translateY(-1px);
+    box-shadow: 0 3px 6px rgba(0,0,0,0.06);
 }
-.controles input[type=text] { min-width: 240px; flex: 1; }
+.tarjeta-valor { font-size: 1.75rem; font-weight: 700; color: var(--azul-oscuro); }
+.tarjeta-etiqueta { font-size: 0.78rem; color: #5a6472; margin-top: 4px; font-weight: 600; text-transform: uppercase; }
+
+.panel {
+    background: var(--blanco);
+    border: 1px solid var(--gris-borde);
+    border-radius: 8px;
+    padding: 18px;
+    margin-bottom: 22px;
+    overflow-x: auto;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+}
+
+.form-filtros { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 16px; }
+.form-filtros .campo { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; }
+.form-filtros label { color: #5a6472; font-weight: 600; }
+.form-filtros select, .form-filtros input {
+    padding: 7px 10px;
+    border: 1px solid var(--gris-borde);
+    border-radius: 4px;
+    font-size: 0.85rem;
+    min-width: 140px;
+    background: #fff;
+    outline: none;
+}
+.form-filtros input[type=text].busqueda { min-width: 260px; }
+
 .btn {
-    padding: 8px 14px; border-radius: 6px; border: 1px solid var(--azul-claro); background: var(--azul-claro);
-    color: #fff; cursor: pointer; font-size: 0.88rem; font-weight: 600;
+    background: var(--azul-utmach);
+    color: var(--blanco);
+    border: 1px solid var(--azul-utmach);
+    padding: 7px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: none;
+    display: inline-block;
 }
-.btn.secundario { background: #fff; color: var(--azul-claro); }
-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
-table th, table td { padding: 9px 10px; border-bottom: 1px solid var(--gris-borde); text-align: left; }
-table th { color: var(--texto-suave); font-weight: 600; background: #f8fafb; }
-table tbody tr { cursor: pointer; }
-table tbody tr:hover { background: #f2f7fb; }
-.envoltura-tabla { overflow-x: auto; }
-.badge { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: 0.78rem; font-weight: 600; }
-.badge-vigente { background: #e3f2e5; color: var(--verde); }
-.badge-proximo { background: #fff3d6; color: var(--amarillo); }
-.badge-vencido { background: #fde3e1; color: var(--rojo); }
-.badge-sin_informacion { background: #eceff1; color: var(--texto-suave); }
-.badge-adenda { background: #fdeee1; color: var(--naranja); }
-.texto-vacio { color: var(--texto-suave); font-style: italic; padding: 18px 0; }
-.grafico-barra { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-.grafico-barra .etiqueta { width: 190px; font-size: 0.85rem; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.grafico-barra .pista { flex: 1; background: #eef1f3; border-radius: 5px; height: 16px; overflow: hidden; }
-.grafico-barra .relleno { background: var(--azul-claro); height: 100%; border-radius: 5px; }
-.grafico-barra .total { width: 34px; text-align: right; font-size: 0.82rem; color: var(--texto-suave); }
-.graficos-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+.btn:hover { background: var(--azul-oscuro); border-color: var(--azul-oscuro); }
+.btn-secundario { background: var(--blanco); color: var(--azul-utmach); border: 1px solid var(--azul-utmach); }
+.btn-secundario:hover { background: #eef2f7; }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+th, td { padding: 9px 12px; border-bottom: 1px solid var(--gris-borde); text-align: left; }
+th { background: #eef1f4; color: var(--azul-oscuro); position: sticky; top: 0; font-weight: 600; cursor: pointer; user-select: none; }
+th:hover { background: #e3e8ed; }
+tr:hover td { background: #f6f9fc; }
+td.col-institucion { min-width: 240px; font-weight: 500; }
+
+.estado { display: inline-flex; align-items: center; gap: 5px; font-size: 0.8rem; font-weight: 600; }
+.estado.vigente { color: var(--verde); }
+.estado.proximo { color: var(--amarillo); }
+.estado.vencido { color: var(--rojo); }
+.estado.sin-info { color: #6b7480; }
+
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.72rem; font-weight: 600; margin-right: 4px; }
+.badge-vigente { background: #e6f4ea; color: var(--verde); }
+.badge-proximo { background: #fef7e0; color: var(--amarillo); }
+.badge-vencido { background: #fce8e6; color: var(--rojo); }
+.badge-sin_informacion { background: #eceff1; color: #5b6b78; }
+.badge-revision { background: #fdecea; color: var(--naranja); }
+.badge-adenda { background: #e8f0fb; color: var(--azul-info); }
+.badge-conflicto { background: #fdecea; color: var(--rojo); }
+
+.paginacion { display: flex; gap: 6px; margin-top: 16px; align-items: center; flex-wrap: wrap; font-size: 0.85rem; }
+.paginacion button, .paginacion span {
+    padding: 5px 11px;
+    border: 1px solid var(--gris-borde);
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 0.82rem;
+}
+.paginacion button:hover { background: #eef2f7; }
+.paginacion .activa { background: var(--azul-utmach); color: var(--blanco); border-color: var(--azul-utmach); font-weight: 600; }
+
+.grafico-barra { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+.grafico-barra .etiqueta { width: 170px; font-size: 0.84rem; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grafico-barra .pista { flex: 1; background: #eef1f3; border-radius: 4px; height: 16px; overflow: hidden; }
+.grafico-barra .relleno { background: var(--azul-utmach); height: 100%; border-radius: 4px; }
+.grafico-barra .total { width: 42px; text-align: right; font-size: 0.82rem; color: #5a6472; font-weight: 600; }
+.graficos-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; margin-top: 14px; }
+
+/* Modal */
 .modal-fondo {
-    display: none; position: fixed; inset: 0; background: rgba(20,30,40,0.55); z-index: 100;
+    display: none; position: fixed; inset: 0; background: rgba(16, 35, 61, 0.55); z-index: 1000;
     align-items: center; justify-content: center; padding: 20px;
 }
 .modal-fondo.visible { display: flex; }
 .modal {
-    background: #fff; border-radius: 10px; max-width: 640px; width: 100%; max-height: 85vh; overflow-y: auto;
-    padding: 22px 26px;
+    background: #fff; border-radius: 8px; max-width: 720px; width: 100%; max-height: 88vh; overflow-y: auto;
+    padding: 24px 28px; box-shadow: 0 10px 30px rgba(0,0,0,0.25);
 }
-.modal h3 { margin-top: 0; color: var(--azul); }
-.modal dl { display: grid; grid-template-columns: 160px 1fr; gap: 8px 12px; font-size: 0.9rem; }
-.modal dt { color: var(--texto-suave); }
-.modal .cerrar { float: right; background: none; border: none; font-size: 1.3rem; cursor: pointer; color: var(--texto-suave); }
-.timeline-item { border-left: 3px solid var(--azul-claro); padding: 6px 0 6px 14px; margin-bottom: 8px; font-size: 0.87rem; }
-.timeline-item .fecha { color: var(--texto-suave); font-size: 0.8rem; }
-.aviso-alerta { background: #fdeee1; border: 1px solid #f0c39a; color: #7a3c10; border-radius: 8px; padding: 10px 14px; font-size: 0.85rem; margin-bottom: 14px; }
-footer.pie { text-align: center; padding: 20px; color: var(--texto-suave); font-size: 0.8rem; }
-.leyenda-consulta { text-align: center; font-size: 0.82rem; color: var(--texto-suave); padding: 6px 0 0; }
+.modal h3 { margin-top: 0; color: var(--azul-oscuro); font-size: 1.2rem; border-bottom: 2px solid var(--gris-borde); padding-bottom: 8px; }
+.modal dl { display: grid; grid-template-columns: 170px 1fr; gap: 10px 14px; font-size: 0.88rem; margin: 16px 0; }
+.modal dt { color: #5a6472; font-weight: 600; }
+.modal dd { margin: 0; word-break: break-word; }
+.modal .cerrar { float: right; background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #5a6472; }
 
-/* --- Seccion demostrativa "Solicitudes y trazabilidad" (Fase 6.5 - ajuste) --- */
-.lista-conoce { columns: 2; column-gap: 30px; padding-left: 20px; font-size: 0.9rem; }
-.lista-conoce li { margin-bottom: 6px; }
-.aviso-demo {
-    display: inline-block; background: #fff3d6; color: #8a6d1f; border: 1px solid #f0d98c;
-    border-radius: 6px; padding: 6px 12px; font-size: 0.82rem; font-weight: 600; margin-bottom: 14px;
-}
-.demo-formulario { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
-.demo-campo-ancho { grid-column: 1 / -1; }
-.demo-campo label { display: block; font-size: 0.78rem; color: var(--texto-suave); margin-bottom: 4px; }
-.demo-campo input, .demo-campo select {
-    width: 100%; padding: 7px 9px; border: 1px solid var(--gris-borde); border-radius: 6px;
-    background: #f8fafb; font-size: 0.87rem; color: var(--texto);
-}
-.demo-grupo-condicional {
-    grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 14px; border-top: 1px dashed var(--gris-borde); padding-top: 14px; margin-top: 4px;
-}
-.demo-ficha-solicitud {
-    background: #f8fafb; border: 1px solid var(--gris-borde); border-radius: 8px; padding: 14px;
-    margin-bottom: 16px; font-size: 0.9rem; display: grid; gap: 6px;
-}
-.demo-timeline { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 6px; margin-bottom: 14px; }
-.demo-timeline-paso { background: var(--azul-claro); color: #fff; padding: 7px 12px; border-radius: 6px; font-size: 0.78rem; font-weight: 600; }
-.demo-timeline-paso:not(:last-child)::after { content: "→"; margin-left: 10px; color: var(--texto-suave); font-weight: 400; }
-.chips-grid { display: flex; flex-wrap: wrap; gap: 8px; }
-.chip { background: #eef3f7; color: var(--azul); border: 1px solid var(--gris-borde); border-radius: 16px; padding: 6px 14px; font-size: 0.83rem; font-weight: 600; }
+/* Tablero Kanban Solicitudes */
+.kanban-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 14px; }
+.kanban-col { background: #edf1f5; border-radius: 6px; padding: 12px; min-height: 300px; }
+.kanban-col h4 { margin: 0 0 10px; font-size: 0.88rem; color: var(--azul-oscuro); border-bottom: 2px solid var(--gris-borde); padding-bottom: 6px; display: flex; justify-content: space-between; }
+.kanban-card { background: #fff; border: 1px solid var(--gris-borde); border-radius: 6px; padding: 10px; margin-bottom: 8px; font-size: 0.82rem; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+.kanban-card:hover { border-color: var(--azul-utmach); }
+.kanban-card strong { display: block; color: var(--azul-oscuro); margin-bottom: 4px; font-size: 0.86rem; }
 
-@media (max-width: 640px) {
-    .grafico-barra .etiqueta { width: 110px; }
-    .modal dl { grid-template-columns: 1fr; }
-    .lista-conoce { columns: 1; }
+.semaforo-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; }
+.semaforo-VERDE { background-color: var(--verde); }
+.semaforo-AMARILLO { background-color: var(--amarillo); }
+.semaforo-NARANJA { background-color: var(--naranja); }
+.semaforo-ROJO { background-color: var(--rojo); }
+
+.pie {
+    text-align: center; padding: 20px 24px; color: #6b7480; font-size: 0.8rem;
+    border-top: 1px solid var(--gris-borde); margin-top: 40px; background: #fff;
 }
+.alerta-box { padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 0.88rem; }
+.alerta-info-box { background: #e8f0fb; border: 1px solid #bcd3ee; color: #1c4a7a; }
+.alerta-warning-box { background: #fff4e5; border: 1px solid #fed7a2; color: #8a4b08; }
 </style>
 </head>
 <body>
 
 <header class="cabecera">
-    <h1>Sistema de Seguimiento de Convenios Interinstitucionales — UTMACH</h1>
-    <p class="subtitulo">Dashboard Ejecutivo Portable · Versión de consulta</p>
+    <div class="cabecera-marca">
+        <span class="cabecera-titulo">Sistema de Seguimiento de Convenios</span>
+        <span class="cabecera-subtitulo">Universidad Técnica de Machala</span>
+    </div>
+    <nav class="nav-principal" id="navPrincipal">
+        <a class="nav-link activo" onclick="cambiarVista('inicio')">Inicio</a>
+        <a class="nav-link" onclick="cambiarVista('convenios')">Convenios</a>
+        <a class="nav-link" onclick="cambiarVista('solicitudes')">📩 Solicitudes</a>
+        <a class="nav-link" onclick="cambiarVista('pendientes')">⏳ Pendientes</a>
+        <a class="nav-link" onclick="cambiarVista('mi-trabajo')">🗓 Mi trabajo</a>
+        <a class="nav-link" onclick="cambiarVista('proximos-vencer')">Próximos a vencer</a>
+        <a class="nav-link" onclick="cambiarVista('vencidos')">Vencidos</a>
+        <a class="nav-link" onclick="cambiarVista('revision')">Revisión</a>
+        <a class="nav-link" onclick="cambiarVista('sincronizacion')">Sincronización</a>
+        <a class="nav-link" onclick="cambiarVista('configuracion')">⚙️ Configuración</a>
+    </nav>
+    <form class="busqueda-global" onsubmit="event.preventDefault(); buscarGlobal(this.q.value);">
+        <input type="text" name="q" id="headerSearchInput" placeholder="Buscar convenio o solicitud...">
+        <button type="submit" aria-label="Buscar">🔍</button>
+    </form>
 </header>
+
 <div class="franja-corte">
-    Información actualizada al: <strong>__FECHA_CORTE__</strong> · Versión de consulta. Los datos corresponden a la fecha de actualización indicada. No se actualiza automáticamente.
+    <span>Fotografía de consulta institucional — <strong>Repositorio de Solo Lectura</strong></span>
+    <span>Fecha de corte: <strong>__FECHA_CORTE__</strong></span>
 </div>
 
-<nav class="menu">
-    <button data-seccion="resumen" class="activo">Resumen</button>
-    <button data-seccion="convenios">Convenios</button>
-    <button data-seccion="proximos">Próximos a vencer</button>
-    <button data-seccion="vencidos">Vencidos</button>
-    <button data-seccion="revision">Revisión pendiente</button>
-    <button data-seccion="solicitudes">Solicitudes</button>
-    <button data-seccion="modulo-solicitudes">Solicitudes y trazabilidad</button>
-</nav>
+<main class="contenido">
 
-<main>
-
-<section id="seccion-resumen" class="seccion activa">
-    <h2 class="titulo-seccion">Resumen ejecutivo</h2>
-
-    <h3>Convenios suscritos</h3>
-    <div class="tarjetas" id="tarjetas-convenios"></div>
-
-    <h3>Solicitudes en trámite</h3>
-    <div class="tarjetas" id="tarjetas-solicitudes"></div>
-    <p class="texto-vacio" id="mensaje-sin-solicitudes-resumen" style="display:none;">Actualmente no existen solicitudes registradas.</p>
-
-    <div class="graficos-grid">
-        <div class="panel">
-            <h3>Convenios por año</h3>
-            <div id="grafico-anio"></div>
+    <!-- 1. VISTA INICIO -->
+    <section id="vista-inicio" class="seccion activa">
+        <h1>Convenios suscritos</h1>
+        <div class="tarjetas">
+            <div class="tarjeta" onclick="filtrarConvenios('todos')">
+                <div class="tarjeta-valor" id="cnt-total">0</div>
+                <div class="tarjeta-etiqueta">TOTAL DE CONVENIOS</div>
+            </div>
+            <div class="tarjeta" onclick="filtrarConvenios('VIGENTE')">
+                <div class="tarjeta-valor" id="cnt-vigentes">🟢 0</div>
+                <div class="tarjeta-etiqueta">VIGENTES</div>
+            </div>
+            <div class="tarjeta" onclick="cambiarVista('proximos-vencer')">
+                <div class="tarjeta-valor" id="cnt-proximos">🟡 0</div>
+                <div class="tarjeta-etiqueta">PRÓXIMOS A VENCER</div>
+            </div>
+            <div class="tarjeta" onclick="cambiarVista('vencidos')">
+                <div class="tarjeta-valor" id="cnt-vencidos">🔴 0</div>
+                <div class="tarjeta-etiqueta">VENCIDOS</div>
+            </div>
+            <div class="tarjeta" onclick="filtrarConvenios('SIN_INFORMACION')">
+                <div class="tarjeta-valor" id="cnt-sin_info">⚪ 0</div>
+                <div class="tarjeta-etiqueta">SIN INFORMACIÓN</div>
+            </div>
+            <div class="tarjeta" onclick="cambiarVista('revision')">
+                <div class="tarjeta-valor" id="cnt-revision">🟠 0</div>
+                <div class="tarjeta-etiqueta">REQUIEREN REVISIÓN</div>
+            </div>
+            <div class="tarjeta" onclick="filtrarConvenios('adenda')">
+                <div class="tarjeta-valor" id="cnt-adenda">🔵 0</div>
+                <div class="tarjeta-etiqueta">POSIBLE ADENDA</div>
+            </div>
         </div>
+
+        <h2>Próximos a vencer (menor días restantes primero)</h2>
         <div class="panel">
-            <h3>Convenios por tipo</h3>
-            <div id="grafico-tipo"></div>
+            <table id="tabla-proximos-top">
+                <thead>
+                    <tr><th>Institución</th><th>Tipo</th><th>Vencimiento</th><th>Días restantes</th><th>Administrador</th></tr>
+                </thead>
+                <tbody id="tbody-proximos-top"></tbody>
+            </table>
+            <p style="margin-top:12px;"><button class="btn btn-secundario" onclick="cambiarVista('proximos-vencer')">Ver todos los próximos a vencer</button></p>
         </div>
-        <div class="panel">
-            <h3>Distribución por estado de vigencia</h3>
-            <div id="grafico-estado"></div>
+
+        <h1>Solicitudes en trámite</h1>
+        <p style="color:#5a6472; margin:-8px 0 14px; font-size:0.86rem;">Universo independiente de convenios suscritos — trámites previos a firma.</p>
+        <div class="tarjetas">
+            <div class="tarjeta" onclick="cambiarVista('solicitudes')">
+                <div class="tarjeta-valor" id="cnt-sol-total">0</div>
+                <div class="tarjeta-etiqueta">TOTAL EN TRÁMITE</div>
+            </div>
+            <div class="tarjeta" onclick="cambiarVista('solicitudes')">
+                <div class="tarjeta-valor" id="cnt-sol-recibidas">0</div>
+                <div class="tarjeta-etiqueta">RECIBIDAS</div>
+            </div>
+            <div class="tarjeta" onclick="cambiarVista('solicitudes')">
+                <div class="tarjeta-valor" id="cnt-sol-gestion">0</div>
+                <div class="tarjeta-etiqueta">EN GESTIÓN</div>
+            </div>
+            <div class="tarjeta" onclick="cambiarVista('pendientes')">
+                <div class="tarjeta-valor" id="cnt-sol-pendientes">⏳ 0</div>
+                <div class="tarjeta-etiqueta">PENDIENTES</div>
+            </div>
+            <div class="tarjeta" onclick="cambiarVista('solicitudes')">
+                <div class="tarjeta-valor" id="cnt-sol-juridico">0</div>
+                <div class="tarjeta-etiqueta">EN JURÍDICO</div>
+            </div>
+            <div class="tarjeta" onclick="cambiarVista('solicitudes')">
+                <div class="tarjeta-valor" id="cnt-sol-factibilidad">0</div>
+                <div class="tarjeta-etiqueta">EN FACTIBILIDAD</div>
+            </div>
+            <div class="tarjeta" onclick="cambiarVista('solicitudes')">
+                <div class="tarjeta-valor" id="cnt-sol-firma">0</div>
+                <div class="tarjeta-etiqueta">EN FIRMA</div>
+            </div>
+            <div class="tarjeta" onclick="cambiarVista('solicitudes')">
+                <div class="tarjeta-valor" id="cnt-sol-sinmov">🔴 0</div>
+                <div class="tarjeta-etiqueta">SIN MOVIMIENTO</div>
+            </div>
         </div>
-    </div>
-</section>
 
-<section id="seccion-convenios" class="seccion">
-    <h2 class="titulo-seccion">Convenios</h2>
-    <div class="controles">
-        <input type="text" id="buscar-convenios" placeholder="Buscar por institución, código, tipo o administrador…">
-        <select id="filtro-anio"><option value="">Año (todos)</option></select>
-        <select id="filtro-tipo"><option value="">Tipo (todos)</option></select>
-        <select id="filtro-estado">
-            <option value="">Estado de vigencia (todos)</option>
-            <option value="VIGENTE">Vigente</option>
-            <option value="PROXIMO_A_VENCER">Próximo a vencer</option>
-            <option value="VENCIDO">Vencido</option>
-            <option value="SIN_INFORMACION">Sin información suficiente</option>
-        </select>
-        <button class="btn secundario" id="limpiar-filtros-convenios">Limpiar filtros</button>
-    </div>
-    <div class="envoltura-tabla panel">
-        <table id="tabla-convenios">
-            <thead><tr>
-                <th>Año</th><th>Código</th><th>Institución</th><th>Tipo</th>
-                <th>Fecha suscripción</th><th>Fecha terminación</th><th>Estado</th><th>Administrador</th>
-            </tr></thead>
-            <tbody></tbody>
-        </table>
-        <p class="texto-vacio" id="mensaje-sin-convenios" style="display:none;">No hay convenios que coincidan con la búsqueda o los filtros aplicados.</p>
-    </div>
-</section>
+        <h2>Estadísticas de convenios</h2>
+        <div class="graficos-grid">
+            <div class="panel">
+                <h3 style="margin-top:0; color:var(--azul-oscuro); font-size:0.95rem;">Distribución por Año</h3>
+                <div id="grafico-anios"></div>
+            </div>
+            <div class="panel">
+                <h3 style="margin-top:0; color:var(--azul-oscuro); font-size:0.95rem;">Distribución por Tipo</h3>
+                <div id="grafico-tipos"></div>
+            </div>
+            <div class="panel">
+                <h3 style="margin-top:0; color:var(--azul-oscuro); font-size:0.95rem;">Distribución por Estado</h3>
+                <div id="grafico-estados"></div>
+            </div>
+        </div>
+    </section>
 
-<section id="seccion-proximos" class="seccion">
-    <h2 class="titulo-seccion">Convenios próximos a vencer</h2>
-    <div class="envoltura-tabla panel">
-        <table>
-            <thead><tr><th>Institución</th><th>Tipo</th><th>Fecha de terminación</th><th>Días restantes</th><th>Administrador</th></tr></thead>
-            <tbody id="tabla-proximos"></tbody>
-        </table>
-        <p class="texto-vacio" id="mensaje-sin-proximos" style="display:none;">No hay convenios próximos a vencer.</p>
-    </div>
-</section>
+    <!-- 2. VISTA CONVENIOS -->
+    <section id="vista-convenios" class="seccion">
+        <h1>Convenios (<span id="total-convenios-filtrados">0</span>)</h1>
 
-<section id="seccion-vencidos" class="seccion">
-    <h2 class="titulo-seccion">Convenios vencidos</h2>
-    <div class="envoltura-tabla panel">
-        <table>
-            <thead><tr><th>Institución</th><th>Tipo</th><th>Fecha de terminación</th><th>Administrador</th><th>Observación</th></tr></thead>
-            <tbody id="tabla-vencidos"></tbody>
-        </table>
-        <p class="texto-vacio" id="mensaje-sin-vencidos" style="display:none;">No hay convenios vencidos.</p>
-    </div>
-</section>
-
-<section id="seccion-revision" class="seccion">
-    <h2 class="titulo-seccion">Registros que requieren revisión</h2>
-    <div class="envoltura-tabla panel">
-        <table>
-            <thead><tr><th>Institución</th><th>Año</th><th>Tipo</th><th>Motivo de revisión</th></tr></thead>
-            <tbody id="tabla-revision"></tbody>
-        </table>
-        <p class="texto-vacio" id="mensaje-sin-revision" style="display:none;">No hay registros pendientes de revisión.</p>
-    </div>
-</section>
-
-<section id="seccion-solicitudes" class="seccion">
-    <h2 class="titulo-seccion">Solicitudes en trámite</h2>
-    <div class="controles">
-        <input type="text" id="buscar-solicitudes" placeholder="Buscar por institución, código o responsable…">
-        <select id="filtro-estado-solicitud"><option value="">Estado (todos)</option></select>
-        <button class="btn secundario" id="limpiar-filtros-solicitudes">Limpiar filtros</button>
-    </div>
-    <div class="envoltura-tabla panel">
-        <table id="tabla-solicitudes">
-            <thead><tr>
-                <th>Código</th><th>Institución</th><th>Fecha ingreso</th><th>Medio</th><th>Responsable</th>
-                <th>Pendiente actual</th><th>Estado</th><th>Días s/mov.</th>
-            </tr></thead>
-            <tbody></tbody>
-        </table>
-        <p class="texto-vacio" id="mensaje-sin-solicitudes" style="display:none;">Actualmente no existen solicitudes registradas.</p>
-    </div>
-</section>
-
-<section id="seccion-modulo-solicitudes" class="seccion">
-    <h2 class="titulo-seccion">Solicitudes y trazabilidad</h2>
-    <p>El módulo de solicitudes permite registrar los pedidos de nuevos convenios desde su ingreso y conservar la trazabilidad de las actuaciones realizadas durante su gestión, especialmente en los trámites recibidos por correo electrónico.</p>
-
-    <div class="panel">
-        <h3>Este módulo permite conocer</h3>
-        <ul class="lista-conoce">
-            <li>Cuándo ingresó</li>
-            <li>Por qué medio</li>
-            <li>A quién se delegó</li>
-            <li>Qué criterio se solicitó</li>
-            <li>A qué dependencia</li>
-            <li>Qué respuesta está pendiente</li>
-            <li>Cuánto tiempo lleva sin movimiento</li>
-            <li>En qué etapa se encuentra</li>
-            <li>Si finalmente fue suscrito</li>
-        </ul>
-    </div>
-
-    <div class="panel">
-        <h3>1. Registro de una nueva solicitud</h3>
-        <p class="aviso-demo">Vista demostrativa — el registro real se realiza en el Sistema de Seguimiento de Convenios.</p>
-        <div class="demo-formulario">
-            <div class="demo-campo"><label>Fecha de ingreso</label><input type="text" value="26/08/2026" disabled></div>
-            <div class="demo-campo">
-                <label>Medio de ingreso</label>
-                <select id="demo-medio-ingreso">
-                    <option value="correo">Correo electrónico</option>
-                    <option value="sistema">Sistema institucional</option>
+        <form class="form-filtros" id="form-filtros-convenios" onsubmit="event.preventDefault(); aplicarFiltros();">
+            <div class="campo">
+                <label>Buscar</label>
+                <input type="text" class="busqueda" id="filtro-q" placeholder="institución, código, tipo, administrador...">
+            </div>
+            <div class="campo">
+                <label>Año</label>
+                <select id="filtro-anio"><option value="">Todos</option></select>
+            </div>
+            <div class="campo">
+                <label>Tipo</label>
+                <select id="filtro-tipo"><option value="">Todos</option></select>
+            </div>
+            <div class="campo">
+                <label>Estado de vigencia</label>
+                <select id="filtro-estado">
+                    <option value="">Todos</option>
+                    <option value="VIGENTE">Vigente</option>
+                    <option value="PROXIMO_A_VENCER">Próximo a vencer</option>
+                    <option value="VENCIDO">Vencido</option>
+                    <option value="SIN_INFORMACION">Sin información suficiente</option>
                 </select>
             </div>
-            <div class="demo-campo"><label>Institución / contraparte</label><input type="text" value="Institución de ejemplo" disabled></div>
-            <div class="demo-campo"><label>Asunto</label><input type="text" value="Solicitud de convenio de cooperación" disabled></div>
-            <div class="demo-campo"><label>Tipo de convenio</label><input type="text" value="Convenio Marco" disabled></div>
-            <div class="demo-campo"><label>Dependencia solicitante</label><input type="text" value="Unidad Académica / Facultad" disabled></div>
-            <div class="demo-campo"><label>Responsable</label><input type="text" value="Responsable de ejemplo" disabled></div>
-            <div class="demo-campo demo-campo-ancho"><label>Observación</label><input type="text" value="Ejemplo de observación breve." disabled></div>
-
-            <div id="demo-grupo-correo" class="demo-grupo-condicional">
-                <div class="demo-campo"><label>Remitente</label><input type="text" value="Nombre de ejemplo" disabled></div>
-                <div class="demo-campo"><label>Correo</label><input type="text" value="ejemplo@institucion.edu" disabled></div>
-                <div class="demo-campo"><label>Asunto del correo</label><input type="text" value="Solicitud de convenio" disabled></div>
-                <div class="demo-campo"><label>Fecha del correo</label><input type="text" value="24/08/2026" disabled></div>
+            <div class="campo">
+                <label>Administrador</label>
+                <select id="filtro-admin"><option value="">Todos</option></select>
             </div>
-            <div id="demo-grupo-sistema" class="demo-grupo-condicional" style="display:none;">
-                <div class="demo-campo"><label>Número de trámite</label><input type="text" value="TR-2026-000123" disabled></div>
-                <div class="demo-campo"><label>Fecha del trámite</label><input type="text" value="24/08/2026" disabled></div>
+            <div class="campo">
+                <label>Tiene adenda</label>
+                <select id="filtro-adenda">
+                    <option value="">Todos</option>
+                    <option value="SI">Sí</option>
+                    <option value="POR_REVISAR">Por revisar</option>
+                    <option value="NO">No</option>
+                </select>
+            </div>
+            <div class="campo">
+                <label>Requiere revisión</label>
+                <select id="filtro-revision">
+                    <option value="">Todos</option>
+                    <option value="SI">Sí</option>
+                    <option value="NO">No</option>
+                </select>
+            </div>
+            <button class="btn" type="submit">Filtrar</button>
+            <button class="btn btn-secundario" type="button" onclick="limpiarFiltros()">Limpiar filtros</button>
+        </form>
+
+        <div class="panel">
+            <table>
+                <thead>
+                    <tr>
+                        <th onclick="ordenarPor('codigo')">Código <span id="sort-codigo"></span></th>
+                        <th onclick="ordenarPor('anio')">Año <span id="sort-anio"></span></th>
+                        <th onclick="ordenarPor('institucion')">Institución <span id="sort-institucion"></span></th>
+                        <th onclick="ordenarPor('tipo')">Tipo <span id="sort-tipo"></span></th>
+                        <th onclick="ordenarPor('fecha_suscripcion')">F. suscripción <span id="sort-fecha_suscripcion"></span></th>
+                        <th onclick="ordenarPor('fecha_terminacion')">F. terminación <span id="sort-fecha_terminacion"></span></th>
+                        <th onclick="ordenarPor('estado_vigencia')">Estado <span id="sort-estado_vigencia"></span></th>
+                        <th onclick="ordenarPor('dias')">Días <span id="sort-dias"></span></th>
+                        <th onclick="ordenarPor('administrador')">Administrador <span id="sort-administrador"></span></th>
+                        <th>Documento</th>
+                        <th>Revisión</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody-convenios"></tbody>
+            </table>
+            <div class="paginacion" id="paginacion-convenios"></div>
+        </div>
+    </section>
+
+    <!-- 3. VISTA SOLICITUDES -->
+    <section id="vista-solicitudes" class="seccion">
+        <h1>📩 Solicitudes en trámite (<span id="total-solicitudes">0</span>)</h1>
+        <div class="alerta-box alerta-info-box">
+            Módulo de trazabilidad y gestión de convenios desde su ingreso hasta la suscripción.
+        </div>
+        <div class="kanban-grid" id="kanban-solicitudes"></div>
+    </section>
+
+    <!-- 4. VISTA PENDIENTES -->
+    <section id="vista-pendientes" class="seccion">
+        <h1>⏳ Pendientes de respuesta</h1>
+        <div class="panel">
+            <div id="lista-pendientes-contenido">
+                <p style="color:#5a6472;">No hay trámites pendientes con criterio en espera de respuesta en este momento.</p>
             </div>
         </div>
-    </div>
+    </section>
 
-    <div class="panel">
-        <h3>2. Ejemplo de trazabilidad</h3>
-        <p class="aviso-demo">EJEMPLO DEMOSTRATIVO — NO CORRESPONDE A UN TRÁMITE REAL</p>
-        <div class="demo-ficha-solicitud">
-            <div><strong>SOL-2026-0001</strong> — EJEMPLO DEMOSTRATIVO</div>
-            <div>Estado: <span class="badge badge-proximo">PENDIENTE DE RESPUESTA</span></div>
-            <div>Pendiente actual: <em>Esperando criterio de factibilidad</em></div>
+    <!-- 5. VISTA MI TRABAJO -->
+    <section id="vista-mi-trabajo" class="seccion">
+        <h1>🗓 Mi trabajo y alertas prioritarias</h1>
+        <div class="panel">
+            <h3 style="margin-top:0; color:var(--azul-oscuro);">Atención prioritaria de convenios y trámites</h3>
+            <p>Se listan a continuación los convenios con vencimiento más inmediato y las alertas activas:</p>
+            <table id="tabla-mi-trabajo">
+                <thead>
+                    <tr><th>Tipo</th><th>Institución</th><th>Estado</th><th>Detalle de atención</th></tr>
+                </thead>
+                <tbody id="tbody-mi-trabajo"></tbody>
+            </table>
         </div>
-        <div class="demo-timeline">
-            <div class="demo-timeline-paso">RECEPCIÓN</div>
-            <div class="demo-timeline-paso">RECIBIDO EN LA UNIDAD</div>
-            <div class="demo-timeline-paso">DELEGACIÓN</div>
-            <div class="demo-timeline-paso">SOLICITUD DE CRITERIO</div>
-            <div class="demo-timeline-paso">RESPUESTA RECIBIDA</div>
-            <div class="demo-timeline-paso">ENVÍO A CONTRAPARTE</div>
-            <div class="demo-timeline-paso">FIRMA</div>
-            <div class="demo-timeline-paso">SUSCRIPCIÓN</div>
-        </div>
-        <p class="texto-vacio">El flujo no es rígido: las actuaciones se registran según corresponda a cada trámite; no todos los pasos ocurren siempre ni en el mismo orden.</p>
-    </div>
+    </section>
 
-    <div class="panel">
-        <h3>¿Qué se puede registrar?</h3>
-        <div class="chips-grid">
-            <span class="chip">Delegar</span>
-            <span class="chip">Solicitar criterio</span>
-            <span class="chip">Solicitar factibilidad</span>
-            <span class="chip">Enviar a jurídico</span>
-            <span class="chip">Registrar respuesta</span>
-            <span class="chip">Enviar a contraparte</span>
-            <span class="chip">Enviar a firma</span>
-            <span class="chip">Marcar como suscrito</span>
-            <span class="chip">Nota interna</span>
+    <!-- 6. VISTA PRÓXIMOS A VENCER -->
+    <section id="vista-proximos-vencer" class="seccion">
+        <h1>🟡 Convenios próximos a vencer</h1>
+        <div class="panel">
+            <table>
+                <thead>
+                    <tr><th>Código</th><th>Institución</th><th>Tipo</th><th>F. Terminación</th><th>Días restantes</th><th>Administrador</th></tr>
+                </thead>
+                <tbody id="tbody-proximos-lista"></tbody>
+            </table>
         </div>
-    </div>
-</section>
+    </section>
+
+    <!-- 7. VISTA VENCIDOS -->
+    <section id="vista-vencidos" class="seccion">
+        <h1>🔴 Convenios vencidos</h1>
+        <div class="panel">
+            <table>
+                <thead>
+                    <tr><th>Código</th><th>Año</th><th>Institución</th><th>Tipo</th><th>F. Terminación</th><th>Administrador</th></tr>
+                </thead>
+                <tbody id="tbody-vencidos-lista"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- 8. VISTA REVISIÓN PENDIENTE -->
+    <section id="vista-revision" class="seccion">
+        <h1>🟠 Convenios que requieren revisión</h1>
+        <div class="panel">
+            <table>
+                <thead>
+                    <tr><th>Código</th><th>Año</th><th>Institución</th><th>Motivo de revisión</th><th>Administrador</th></tr>
+                </thead>
+                <tbody id="tbody-revision-lista"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- 9. VISTA SINCRONIZACIÓN -->
+    <section id="vista-sincronizacion" class="seccion">
+        <h1>🔄 Estado de Sincronización documental</h1>
+        <div class="panel">
+            <h3 style="margin-top:0; color:var(--azul-oscuro);">Base de datos maestra SQLite</h3>
+            <p><strong>Fuente institucional:</strong> <code>BASE_DATOS/convenios.db</code></p>
+            <p><strong>Total de convenios catalogados:</strong> <span id="sync-total-convenios"></span></p>
+            <p><strong>Fecha de corte:</strong> __FECHA_CORTE__</p>
+            <div class="alerta-box alerta-info-box">
+                El repositorio documental es de <strong>SOLO LECTURA</strong>. Todas las extracciones, auditorías y cruces se realizan preservando los documentos originales intactos.
+            </div>
+        </div>
+    </section>
+
+    <!-- 10. VISTA CONFIGURACIÓN -->
+    <section id="vista-configuracion" class="seccion">
+        <h1>⚙️ Configuración del Sistema</h1>
+        <div class="panel">
+            <h3 style="margin-top:0; color:var(--azul-oscuro);">Semáforos y Umbrales Institucionales</h3>
+            <dl style="display:grid; grid-template-columns: 240px 1fr; gap:10px; font-size:0.9rem;">
+                <dt>🟡 Próximo a vencer:</dt><dd>Convenios a 90 días o menos de su fecha de terminación.</dd>
+                <dt>🟢 Trámite en tiempo normal:</dt><dd>Hasta 5 días sin movimiento.</dd>
+                <dt>🟡 Trámite en atención:</dt><dd>De 6 a 14 días sin movimiento.</dd>
+                <dt>🔴 Trámite demorado:</dt><dd>Más de 14 días sin movimiento.</dd>
+                <dt>Motor de visualización:</dt><dd>Web de Consulta Autocontenida (Fase 6.5 & GitHub Pages).</dd>
+            </dl>
+        </div>
+    </section>
 
 </main>
 
-<footer class="pie">
-    Sistema de Seguimiento de Convenios Interinstitucionales — Universidad Técnica de Machala (UTMACH)
-    <p class="leyenda-consulta">Dashboard ejecutivo de consulta — no permite modificar información.<br>
-    Para gestión y actualización de datos debe utilizarse el Sistema de Seguimiento de Convenios.</p>
-</footer>
-
-<div class="modal-fondo" id="modal-fondo">
-    <div class="modal" id="modal-contenido"></div>
+<!-- Modal Ficha de Convenio -->
+<div class="modal-fondo" id="modal-convenio" onclick="if(event.target===this) cerrarModal();">
+    <div class="modal">
+        <button class="cerrar" onclick="cerrarModal()">&times;</button>
+        <h3 id="modal-titulo">Ficha del Convenio</h3>
+        <dl id="modal-datos"></dl>
+        <div id="modal-alertas"></div>
+        <div style="text-align:right; margin-top:20px;">
+            <button class="btn" onclick="cerrarModal()">Cerrar</button>
+        </div>
+    </div>
 </div>
+
+<footer class="pie">
+    Sistema de Seguimiento de Convenios — Universidad Técnica de Machala (UTMACH)<br>
+    Fuente documental de solo lectura — ningún archivo original es modificado por este sistema.
+</footer>
 
 <script>
 const DATOS = __DATOS_JSON__;
 
-function escapar(t) {
-    if (t === null || t === undefined) return "";
-    const div = document.createElement("div");
-    div.textContent = String(t);
-    return div.innerHTML;
-}
+let vistaActual = 'inicio';
+let conveniosFiltrados = [...DATOS.convenios];
+let paginaActual = 1;
+const POR_PAGINA = 50;
+let campoOrden = 'anio';
+let direccionOrden = 'desc';
 
-function badgeEstado(codigo, etiqueta) {
-    const clases = {VIGENTE: "badge-vigente", PROXIMO_A_VENCER: "badge-proximo", VENCIDO: "badge-vencido", SIN_INFORMACION: "badge-sin_informacion"};
-    return `<span class="badge ${clases[codigo] || 'badge-sin_informacion'}">${escapar(etiqueta)}</span>`;
-}
-
-// ---------------------------------------------------------------- navegacion
-document.querySelectorAll("nav.menu button").forEach(btn => {
-    btn.addEventListener("click", () => {
-        document.querySelectorAll("nav.menu button").forEach(b => b.classList.remove("activo"));
-        document.querySelectorAll("main .seccion").forEach(s => s.classList.remove("activa"));
-        btn.classList.add("activo");
-        document.getElementById("seccion-" + btn.dataset.seccion).classList.add("activa");
-    });
-});
-
-// -------------------------------------------------------------- tarjetas resumen
-function pintarTarjetasConvenios() {
+function init() {
+    // Rellenar contadores
     const c = DATOS.contadores_convenios;
-    const cont = document.getElementById("tarjetas-convenios");
-    const items = [
-        ["total", "Total"], ["vigentes", "Vigentes", "vigente"], ["proximos_a_vencer", "Próximos a vencer", "atencion"],
-        ["vencidos", "Vencidos", "critico"], ["sin_informacion", "Sin información suficiente"],
-        ["revision_pendiente", "Revisión pendiente", "riesgo"],
-    ];
-    cont.innerHTML = items.map(([clave, etiqueta, extra]) =>
-        `<div class="tarjeta ${extra || ''}"><div class="valor">${c[clave]}</div><div class="etiqueta">${etiqueta}</div></div>`
-    ).join("");
+    document.getElementById('cnt-total').textContent = c.total;
+    document.getElementById('cnt-vigentes').textContent = '🟢 ' + c.vigentes;
+    document.getElementById('cnt-proximos').textContent = '🟡 ' + c.proximos_a_vencer;
+    document.getElementById('cnt-vencidos').textContent = '🔴 ' + c.vencidos;
+    document.getElementById('cnt-sin_info').textContent = '⚪ ' + c.sin_informacion;
+    document.getElementById('cnt-revision').textContent = '🟠 ' + c.requieren_revision;
+    document.getElementById('cnt-adenda').textContent = '🔵 ' + c.posible_adenda;
+
+    const cs = DATOS.contadores_solicitudes;
+    document.getElementById('cnt-sol-total').textContent = cs.total;
+    document.getElementById('cnt-sol-recibidas').textContent = cs.recibidas || 0;
+    document.getElementById('cnt-sol-gestion').textContent = cs.en_gestion || 0;
+    document.getElementById('cnt-sol-pendientes').textContent = '⏳ ' + (cs.pendientes_respuesta || 0);
+    document.getElementById('cnt-sol-juridico').textContent = cs.en_juridico || 0;
+    document.getElementById('cnt-sol-factibilidad').textContent = cs.en_factibilidad || 0;
+    document.getElementById('cnt-sol-firma').textContent = cs.en_firma || 0;
+    document.getElementById('cnt-sol-sinmov').textContent = '🔴 ' + (cs.sin_movimiento || 0);
+    document.getElementById('total-solicitudes').textContent = cs.total;
+    document.getElementById('sync-total-convenios').textContent = c.total;
+
+    // Rellenar selectores de filtro
+    const selAnio = document.getElementById('filtro-anio');
+    DATOS.disponibles.anios.forEach(a => {
+        selAnio.innerHTML += `<option value="${a}">${a}</option>`;
+    });
+
+    const selTipo = document.getElementById('filtro-tipo');
+    DATOS.disponibles.tipos.forEach(t => {
+        selTipo.innerHTML += `<option value="${t}">${t}</option>`;
+    });
+
+    const selAdmin = document.getElementById('filtro-admin');
+    DATOS.disponibles.administradores.forEach(adm => {
+        selAdmin.innerHTML += `<option value="${adm}">${adm}</option>`;
+    });
+
+    // Renderizar tablas
+    renderizarProximosTop();
+    renderizarGraficos();
+    renderizarConvenios();
+    renderizarSolicitudesKanban();
+    renderizarVistasEspeciales();
+
+    // Comprobar fragmento en URL
+    const partesUrl = window.location.href.split('#');
+    if (partesUrl.length > 1 && partesUrl[1]) {
+        cambiarVista(partesUrl[1]);
+    }
 }
 
-function pintarTarjetasSolicitudes() {
-    const c = DATOS.contadores_solicitudes;
-    const cont = document.getElementById("tarjetas-solicitudes");
-    if (!c.total) {
-        cont.innerHTML = "";
-        document.getElementById("mensaje-sin-solicitudes-resumen").style.display = "block";
+function cambiarVista(nombre) {
+    vistaActual = nombre;
+    document.querySelectorAll('.seccion').forEach(s => s.classList.remove('activa'));
+    const sec = document.getElementById('vista-' + nombre);
+    if (sec) sec.classList.add('activa');
+
+    document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('activo'));
+    document.querySelectorAll('.nav-link').forEach(l => {
+        if (l.getAttribute('onclick') && l.getAttribute('onclick').includes(nombre)) {
+            l.classList.add('activo');
+        }
+    });
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function renderizarProximosTop() {
+    const tbody = document.getElementById('tbody-proximos-top');
+    tbody.innerHTML = '';
+    if (!DATOS.proximos_top || DATOS.proximos_top.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#5a6472;">No hay convenios próximos a vencer.</td></tr>';
         return;
     }
-    const items = [
-        ["total", "Total"], ["en_gestion", "En gestión"], ["pendientes_respuesta", "Pendientes de respuesta"],
-        ["en_juridico", "En jurídico"], ["en_factibilidad", "En factibilidad"], ["en_firma", "En firma"],
-        ["sin_movimiento", "Sin movimiento", "riesgo"], ["suscritas", "Suscritas", "vigente"],
-    ];
-    cont.innerHTML = items.map(([clave, etiqueta, extra]) =>
-        `<div class="tarjeta ${extra || ''}"><div class="valor">${c[clave] || 0}</div><div class="etiqueta">${etiqueta}</div></div>`
-    ).join("");
-}
-
-// -------------------------------------------------------------------- graficos
-function pintarBarra(contenedorId, filas, maxItems) {
-    const cont = document.getElementById(contenedorId);
-    if (!filas.length) { cont.innerHTML = '<p class="texto-vacio">Sin datos disponibles.</p>'; return; }
-    const datos = filas.slice(0, maxItems || filas.length);
-    const max = Math.max(...datos.map(f => f.total));
-    cont.innerHTML = datos.map(f => `
-        <div class="grafico-barra">
-            <div class="etiqueta" title="${escapar(f.etiqueta)}">${escapar(f.etiqueta)}</div>
-            <div class="pista"><div class="relleno" style="width:${max ? (f.total / max * 100) : 0}%"></div></div>
-            <div class="total">${f.total}</div>
-        </div>`).join("");
-}
-
-// -------------------------------------------------------------------- convenios
-function opcionesUnicas(selectId, valores, placeholder) {
-    const select = document.getElementById(selectId);
-    const unicos = [...new Set(valores)].filter(v => v && v !== "—").sort();
-    unicos.forEach(v => {
-        const opt = document.createElement("option");
-        opt.value = v; opt.textContent = v;
-        select.appendChild(opt);
+    DATOS.proximos_top.forEach(c => {
+        const tr = document.createElement('tr');
+        tr.style.cursor = 'pointer';
+        tr.onclick = () => abrirModal(c);
+        tr.innerHTML = `
+            <td class="col-institucion">${escapeHtml(c.institucion)}</td>
+            <td>${escapeHtml(c.tipo)}</td>
+            <td>${c.fecha_terminacion || '—'}</td>
+            <td><strong>${c.dias}</strong></td>
+            <td>${escapeHtml(c.administrador)}</td>
+        `;
+        tbody.appendChild(tr);
     });
 }
 
-function filaConvenio(c) {
-    return `<tr data-id="${c.id}" data-tipo="convenio">
-        <td>${c.anio}</td><td>${escapar(c.codigo)}</td><td>${escapar(c.institucion)}</td><td>${escapar(c.tipo)}</td>
-        <td>${escapar(c.fecha_suscripcion) || "—"}</td><td>${escapar(c.fecha_terminacion) || "—"}</td>
-        <td>${badgeEstado(c.estado_vigencia, c.estado_etiqueta)}</td><td>${escapar(c.administrador)}</td>
-    </tr>`;
+function renderizarGraficos() {
+    function dibujarBarras(contenedorId, lista) {
+        const cont = document.getElementById(contenedorId);
+        if (!cont) return;
+        cont.innerHTML = '';
+        const max = Math.max(...lista.map(i => i.total), 1);
+        lista.slice(0, 7).forEach(i => {
+            const pct = Math.round((i.total / max) * 100);
+            cont.innerHTML += `
+                <div class="grafico-barra">
+                    <div class="etiqueta" title="${escapeHtml(i.etiqueta)}">${escapeHtml(i.etiqueta)}</div>
+                    <div class="pista"><div class="relleno" style="width:${pct}%"></div></div>
+                    <div class="total">${i.total}</div>
+                </div>
+            `;
+        });
+    }
+    dibujarBarras('grafico-anios', DATOS.graficos.por_anio);
+    dibujarBarras('grafico-tipos', DATOS.graficos.por_tipo);
+    dibujarBarras('grafico-estados', DATOS.graficos.por_estado);
 }
 
-function aplicarFiltrosConvenios() {
-    const texto = document.getElementById("buscar-convenios").value.trim().toLowerCase();
-    const anio = document.getElementById("filtro-anio").value;
-    const tipo = document.getElementById("filtro-tipo").value;
-    const estado = document.getElementById("filtro-estado").value;
+function filtrarConvenios(estado) {
+    limpiarFiltros(false);
+    if (estado === 'VIGENTE' || estado === 'PROXIMO_A_VENCER' || estado === 'VENCIDO' || estado === 'SIN_INFORMACION') {
+        document.getElementById('filtro-estado').value = estado;
+    } else if (estado === 'adenda') {
+        document.getElementById('filtro-adenda').value = 'SI';
+    }
+    aplicarFiltros();
+    cambiarVista('convenios');
+}
 
-    let filtrados = DATOS.convenios.filter(c => {
+function aplicarFiltros() {
+    const q = document.getElementById('filtro-q').value.trim().toLowerCase();
+    const anio = document.getElementById('filtro-anio').value;
+    const tipo = document.getElementById('filtro-tipo').value;
+    const estado = document.getElementById('filtro-estado').value;
+    const admin = document.getElementById('filtro-admin').value;
+    const adenda = document.getElementById('filtro-adenda').value;
+    const revision = document.getElementById('filtro-revision').value;
+
+    conveniosFiltrados = DATOS.convenios.filter(c => {
+        if (q) {
+            const txt = `${c.codigo} ${c.institucion} ${c.tipo} ${c.administrador} ${c.objeto} ${c.anio}`.toLowerCase();
+            if (!txt.includes(q)) return false;
+        }
         if (anio && String(c.anio) !== anio) return false;
         if (tipo && c.tipo !== tipo) return false;
         if (estado && c.estado_vigencia !== estado) return false;
-        if (texto) {
-            const campo = `${c.institucion} ${c.codigo} ${c.tipo} ${c.administrador}`.toLowerCase();
-            if (!campo.includes(texto)) return false;
-        }
+        if (admin && c.administrador !== admin) return false;
+        if (adenda && c.adenda !== adenda) return false;
+        if (revision === 'SI' && !c.revision) return false;
+        if (revision === 'NO' && c.revision) return false;
         return true;
     });
 
-    const tbody = document.querySelector("#tabla-convenios tbody");
-    tbody.innerHTML = filtrados.map(filaConvenio).join("");
-    document.getElementById("mensaje-sin-convenios").style.display = filtrados.length ? "none" : "block";
+    paginaActual = 1;
+    ordenarLista();
+    renderizarConvenios();
 }
 
-// ------------------------------------------------------------------ solicitudes
-function filaSolicitud(s) {
-    return `<tr data-id="${s.id}" data-tipo="solicitud">
-        <td>${escapar(s.codigo)}</td><td>${escapar(s.institucion)}</td><td>${escapar(s.fecha_ingreso)}</td>
-        <td>${escapar(s.medio)}</td><td>${escapar(s.responsable)}</td><td>${escapar(s.pendiente_actual)}</td>
-        <td>${s.semaforo.icono} ${escapar(s.estado)}</td><td>${escapar(s.dias_sin_movimiento)}</td>
-    </tr>`;
-}
-
-function aplicarFiltrosSolicitudes() {
-    const texto = document.getElementById("buscar-solicitudes").value.trim().toLowerCase();
-    const estado = document.getElementById("filtro-estado-solicitud").value;
-    let filtrados = DATOS.solicitudes.filter(s => {
-        if (estado && s.estado !== estado) return false;
-        if (texto) {
-            const campo = `${s.institucion} ${s.codigo} ${s.responsable}`.toLowerCase();
-            if (!campo.includes(texto)) return false;
-        }
-        return true;
-    });
-    const tbody = document.querySelector("#tabla-solicitudes tbody");
-    tbody.innerHTML = filtrados.map(filaSolicitud).join("");
-    const sinDatos = document.getElementById("mensaje-sin-solicitudes");
-    if (!DATOS.solicitudes.length) {
-        sinDatos.textContent = "Actualmente no existen solicitudes registradas.";
-        sinDatos.style.display = "block";
-    } else {
-        sinDatos.textContent = "No hay solicitudes que coincidan con la búsqueda o los filtros aplicados.";
-        sinDatos.style.display = filtrados.length ? "none" : "block";
+function limpiarFiltros(render = true) {
+    document.getElementById('filtro-q').value = '';
+    document.getElementById('filtro-anio').value = '';
+    document.getElementById('filtro-tipo').value = '';
+    document.getElementById('filtro-estado').value = '';
+    document.getElementById('filtro-admin').value = '';
+    document.getElementById('filtro-adenda').value = '';
+    document.getElementById('filtro-revision').value = '';
+    conveniosFiltrados = [...DATOS.convenios];
+    paginaActual = 1;
+    if (render) {
+        ordenarLista();
+        renderizarConvenios();
     }
 }
 
-// ----------------------------------------------------------------------- modal
-function abrirModalConvenio(id) {
-    const c = DATOS.convenios.find(x => x.id === id);
-    if (!c) return;
-    const expediente = c.expediente_disponible ? "Documento disponible en repositorio institucional" : "Expediente documental no localizado";
-    const adenda = (c.adenda === "SI" || c.adenda === "POR_REVISAR")
-        ? `<p class="aviso-alerta">Vigencia pendiente de validar por posible adenda.</p>` : "";
-    document.getElementById("modal-contenido").innerHTML = `
-        <button class="cerrar" id="cerrar-modal">&times;</button>
-        <h3>${escapar(c.institucion)}</h3>
-        ${adenda}
-        <dl>
-            <dt>Código</dt><dd>${escapar(c.codigo)}</dd>
-            <dt>Tipo</dt><dd>${escapar(c.tipo)}</dd>
-            <dt>Año</dt><dd>${c.anio}</dd>
-            <dt>Objeto</dt><dd>${escapar(c.objeto) || "—"}</dd>
-            <dt>Fecha de suscripción</dt><dd>${escapar(c.fecha_suscripcion) || "—"}</dd>
-            <dt>Fecha de terminación</dt><dd>${escapar(c.fecha_terminacion) || "—"}</dd>
-            <dt>Vigencia</dt><dd>${badgeEstado(c.estado_vigencia, c.estado_etiqueta)}</dd>
-            <dt>Administrador</dt><dd>${escapar(c.administrador)}</dd>
-            <dt>Estado documental</dt><dd>${expediente}</dd>
-        </dl>`;
-    document.getElementById("cerrar-modal").addEventListener("click", cerrarModal);
-    document.getElementById("modal-fondo").classList.add("visible");
+function ordenarPor(campo) {
+    if (campoOrden === campo) {
+        direccionOrden = direccionOrden === 'asc' ? 'desc' : 'asc';
+    } else {
+        campoOrden = campo;
+        direccionOrden = (campo === 'anio' || campo === 'fecha_suscripcion' || campo === 'fecha_terminacion') ? 'desc' : 'asc';
+    }
+    ordenarLista();
+    renderizarConvenios();
 }
 
-function abrirModalSolicitud(id) {
-    const s = DATOS.solicitudes.find(x => x.id === id);
-    if (!s) return;
-    const timeline = s.trazabilidad.length
-        ? s.trazabilidad.map(t => `<div class="timeline-item"><div class="fecha">${escapar(t.fecha)}</div>
-            <strong>${escapar(t.actuacion)}</strong> — ${escapar(t.dependencia)} · ${escapar(t.responsable)}<br>
-            <span>${escapar(t.resultado)}</span></div>`).join("")
-        : '<p class="texto-vacio">Sin actuaciones registradas.</p>';
-    document.getElementById("modal-contenido").innerHTML = `
-        <button class="cerrar" id="cerrar-modal">&times;</button>
-        <h3>${escapar(s.codigo)} — ${escapar(s.institucion)}</h3>
-        <dl>
-            <dt>Fecha de ingreso</dt><dd>${escapar(s.fecha_ingreso)}</dd>
-            <dt>Medio</dt><dd>${escapar(s.medio)}</dd>
-            <dt>Responsable</dt><dd>${escapar(s.responsable)}</dd>
-            <dt>Etapa</dt><dd>${escapar(s.etapa)}</dd>
-            <dt>Estado</dt><dd>${s.semaforo.icono} ${escapar(s.estado)}</dd>
-            <dt>Pendiente actual</dt><dd>${escapar(s.pendiente_actual)}</dd>
-        </dl>
-        <h3>Trazabilidad</h3>
-        ${timeline}`;
-    document.getElementById("cerrar-modal").addEventListener("click", cerrarModal);
-    document.getElementById("modal-fondo").classList.add("visible");
-}
-
-function cerrarModal() { document.getElementById("modal-fondo").classList.remove("visible"); }
-document.getElementById("modal-fondo").addEventListener("click", (e) => { if (e.target.id === "modal-fondo") cerrarModal(); });
-
-document.addEventListener("click", (e) => {
-    const fila = e.target.closest("tr[data-id]");
-    if (!fila) return;
-    const id = parseInt(fila.dataset.id, 10);
-    if (fila.dataset.tipo === "convenio") abrirModalConvenio(id);
-    else abrirModalSolicitud(id);
-});
-
-// ------------------------------------------------------------------- inicio
-function inicializar() {
-    pintarTarjetasConvenios();
-    pintarTarjetasSolicitudes();
-    pintarBarra("grafico-anio", DATOS.graficos.por_anio, 8);
-    pintarBarra("grafico-tipo", DATOS.graficos.por_tipo, 8);
-    pintarBarra("grafico-estado", DATOS.graficos.por_estado);
-
-    opcionesUnicas("filtro-anio", DATOS.convenios.map(c => c.anio));
-    opcionesUnicas("filtro-tipo", DATOS.convenios.map(c => c.tipo));
-    opcionesUnicas("filtro-estado-solicitud", DATOS.solicitudes.map(s => s.estado));
-
-    ["buscar-convenios", "filtro-anio", "filtro-tipo", "filtro-estado"].forEach(id =>
-        document.getElementById(id).addEventListener("input", aplicarFiltrosConvenios));
-    document.getElementById("limpiar-filtros-convenios").addEventListener("click", () => {
-        document.getElementById("buscar-convenios").value = "";
-        document.getElementById("filtro-anio").value = "";
-        document.getElementById("filtro-tipo").value = "";
-        document.getElementById("filtro-estado").value = "";
-        aplicarFiltrosConvenios();
+function ordenarLista() {
+    ['codigo', 'anio', 'institucion', 'tipo', 'fecha_suscripcion', 'fecha_terminacion', 'estado_vigencia', 'dias', 'administrador'].forEach(c => {
+        const el = document.getElementById('sort-' + c);
+        if (el) el.textContent = (campoOrden === c) ? (direccionOrden === 'asc' ? '▲' : '▼') : '';
     });
-    aplicarFiltrosConvenios();
 
-    ["buscar-solicitudes", "filtro-estado-solicitud"].forEach(id =>
-        document.getElementById(id).addEventListener("input", aplicarFiltrosSolicitudes));
-    document.getElementById("limpiar-filtros-solicitudes").addEventListener("click", () => {
-        document.getElementById("buscar-solicitudes").value = "";
-        document.getElementById("filtro-estado-solicitud").value = "";
-        aplicarFiltrosSolicitudes();
-    });
-    aplicarFiltrosSolicitudes();
-
-    const tProximos = document.getElementById("tabla-proximos");
-    const proximos = DATOS.convenios.filter(c => c.estado_vigencia === "PROXIMO_A_VENCER").sort((a, b) => (a.dias ?? 9999) - (b.dias ?? 9999));
-    tProximos.innerHTML = proximos.map(c => `<tr data-id="${c.id}" data-tipo="convenio">
-        <td>${escapar(c.institucion)}</td><td>${escapar(c.tipo)}</td><td>${escapar(c.fecha_terminacion) || "—"}</td>
-        <td>${c.dias ?? "—"}</td><td>${escapar(c.administrador)}</td></tr>`).join("");
-    document.getElementById("mensaje-sin-proximos").style.display = proximos.length ? "none" : "block";
-
-    const tVencidos = document.getElementById("tabla-vencidos");
-    const vencidos = DATOS.convenios.filter(c => c.estado_vigencia === "VENCIDO");
-    tVencidos.innerHTML = vencidos.map(c => {
-        const obs = (c.adenda === "SI" || c.adenda === "POR_REVISAR")
-            ? '<span class="badge badge-adenda">Vigencia pendiente de validar por posible adenda</span>' : "—";
-        return `<tr data-id="${c.id}" data-tipo="convenio">
-        <td>${escapar(c.institucion)}</td><td>${escapar(c.tipo)}</td><td>${escapar(c.fecha_terminacion) || "—"}</td>
-        <td>${escapar(c.administrador)}</td><td>${obs}</td></tr>`;
-    }).join("");
-    document.getElementById("mensaje-sin-vencidos").style.display = vencidos.length ? "none" : "block";
-
-    const tRevision = document.getElementById("tabla-revision");
-    const revision = DATOS.convenios.filter(c => c.revision);
-    tRevision.innerHTML = revision.map(c => `<tr data-id="${c.id}" data-tipo="convenio">
-        <td>${escapar(c.institucion)}</td><td>${c.anio}</td><td>${escapar(c.tipo)}</td>
-        <td>${c.descripciones_revision.map(d => `<span class="badge badge-sin_informacion">${escapar(d)}</span>`).join(" ")}</td></tr>`).join("");
-    document.getElementById("mensaje-sin-revision").style.display = revision.length ? "none" : "block";
-}
-
-inicializar();
-
-// --- Seccion demostrativa "Solicitudes y trazabilidad" (Fase 6.5 - ajuste) ---
-// Aislada de la logica de datos reales: solo alterna dos bloques de campos
-// visuales, no lee ni escribe en DATOS y no envia nada a ningun servidor.
-function inicializarDemoSolicitudes() {
-    const selectMedio = document.getElementById("demo-medio-ingreso");
-    if (!selectMedio) return;
-    const grupoCorreo = document.getElementById("demo-grupo-correo");
-    const grupoSistema = document.getElementById("demo-grupo-sistema");
-    selectMedio.addEventListener("change", () => {
-        const esCorreo = selectMedio.value === "correo";
-        grupoCorreo.style.display = esCorreo ? "grid" : "none";
-        grupoSistema.style.display = esCorreo ? "none" : "grid";
+    conveniosFiltrados.sort((a, b) => {
+        let va = a[campoOrden] ?? '';
+        let vb = b[campoOrden] ?? '';
+        if (campoOrden === 'dias') {
+            va = a.dias !== null ? a.dias : 999999;
+            vb = b.dias !== null ? b.dias : 999999;
+            return direccionOrden === 'asc' ? va - vb : vb - va;
+        }
+        if (typeof va === 'number' && typeof vb === 'number') {
+            return direccionOrden === 'asc' ? va - vb : vb - va;
+        }
+        return direccionOrden === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
     });
 }
-inicializarDemoSolicitudes();
+
+function renderizarConvenios() {
+    document.getElementById('total-convenios-filtrados').textContent = conveniosFiltrados.length;
+    const tbody = document.getElementById('tbody-convenios');
+    tbody.innerHTML = '';
+
+    if (conveniosFiltrados.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center; padding:24px; color:#5a6472;">No se encontraron convenios con los filtros seleccionados.</td></tr>';
+        document.getElementById('paginacion-convenios').innerHTML = '';
+        return;
+    }
+
+    const inicio = (paginaActual - 1) * POR_PAGINA;
+    const paginaItems = conveniosFiltrados.slice(inicio, inicio + POR_PAGINA);
+
+    paginaItems.forEach(c => {
+        const tr = document.createElement('tr');
+        tr.style.cursor = 'pointer';
+        tr.onclick = () => abrirModal(c);
+
+        let badgeEstado = `<span class="badge badge-${c.estado_vigencia.toLowerCase()}">${c.estado_etiqueta}</span>`;
+        let badgeRevision = c.revision ? `<span class="badge badge-revision">Revisión</span>` : '—';
+        if (c.adenda === 'SI' || c.adenda === 'POR_REVISAR') {
+            badgeRevision += ` <span class="badge badge-adenda">Adenda</span>`;
+        }
+        if (c.conflicto === 'SI') {
+            badgeRevision += ` <span class="badge badge-conflicto">Conflicto</span>`;
+        }
+
+        tr.innerHTML = `
+            <td>${escapeHtml(c.codigo)}</td>
+            <td>${c.anio || '—'}</td>
+            <td class="col-institucion">${escapeHtml(c.institucion)}</td>
+            <td>${escapeHtml(c.tipo)}</td>
+            <td>${c.fecha_suscripcion || '—'}</td>
+            <td>${c.fecha_terminacion || '—'}</td>
+            <td>${badgeEstado}</td>
+            <td>${c.dias !== null ? c.dias : '—'}</td>
+            <td>${escapeHtml(c.administrador)}</td>
+            <td>${c.expediente_disponible ? '📄 Sí' : '—'}</td>
+            <td>${badgeRevision}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    renderizarPaginacion();
+}
+
+function renderizarPaginacion() {
+    const totalPaginas = Math.ceil(conveniosFiltrados.length / POR_PAGINA);
+    const pagCont = document.getElementById('paginacion-convenios');
+    if (totalPaginas <= 1) {
+        pagCont.innerHTML = `<span>Mostrando ${conveniosFiltrados.length} convenios</span>`;
+        return;
+    }
+
+    let html = `<span>Página ${paginaActual} de ${totalPaginas} (${conveniosFiltrados.length} convenios):</span> `;
+    if (paginaActual > 1) {
+        html += `<button onclick="irAPagina(${paginaActual - 1})">« Anterior</button> `;
+    }
+
+    let pMin = Math.max(1, paginaActual - 3);
+    let pMax = Math.min(totalPaginas, paginaActual + 3);
+    for (let p = pMin; p <= pMax; p++) {
+        html += `<button class="${p === paginaActual ? 'activa' : ''}" onclick="irAPagina(${p})">${p}</button> `;
+    }
+
+    if (paginaActual < totalPaginas) {
+        html += `<button onclick="irAPagina(${paginaActual + 1})">Siguiente »</button>`;
+    }
+    pagCont.innerHTML = html;
+}
+
+function irAPagina(p) {
+    paginaActual = p;
+    renderizarConvenios();
+    document.getElementById('tbody-convenios').scrollIntoView({ behavior: 'smooth' });
+}
+
+function renderizarSolicitudesKanban() {
+    const grid = document.getElementById('kanban-solicitudes');
+    grid.innerHTML = '';
+    const etapas = [
+        { key: 'RECIBIDA', titulo: 'Recibida' },
+        { key: 'EN_GESTION', titulo: 'En Gestión' },
+        { key: 'REVISION_JURIDICA', titulo: 'Revisión Jurídica' },
+        { key: 'FACTIBILIDAD', titulo: 'Factibilidad' },
+        { key: 'FIRMA', titulo: 'Firma' },
+        { key: 'SUSCRITO', titulo: 'Suscrito' },
+    ];
+
+    etapas.forEach(e => {
+        const col = document.createElement('div');
+        col.className = 'kanban-col';
+        const items = DATOS.solicitudes.filter(s => (s.etapa_codigo === e.key || s.estado_codigo === e.key));
+        col.innerHTML = `<h4>${e.titulo} <span>(${items.length})</span></h4>`;
+        if (items.length === 0) {
+            col.innerHTML += `<div style="color:#5a6472; font-style:italic; font-size:0.78rem; padding:10px 0;">Sin trámites en esta etapa</div>`;
+        } else {
+            items.forEach(s => {
+                col.innerHTML += `
+                    <div class="kanban-card">
+                        <strong>${escapeHtml(s.institucion)}</strong>
+                        <div>Código: ${escapeHtml(s.codigo)}</div>
+                        <div>Resp: ${escapeHtml(s.responsable)}</div>
+                        <div style="margin-top:4px;"><span class="semaforo-dot semaforo-${s.semaforo}"></span> ${s.dias_sin_movimiento} días sin mov.</div>
+                    </div>
+                `;
+            });
+        }
+        grid.appendChild(col);
+    });
+}
+
+function renderizarVistasEspeciales() {
+    // 1. Proximos a vencer
+    const tbodyProx = document.getElementById('tbody-proximos-lista');
+    const proximos = DATOS.convenios.filter(c => c.estado_vigencia === 'PROXIMO_A_VENCER').sort((a,b) => (a.dias||0) - (b.dias||0));
+    tbodyProx.innerHTML = '';
+    proximos.forEach(c => {
+        tbodyProx.innerHTML += `
+            <tr style="cursor:pointer;" onclick="abrirModalPorId('${c.id}')">
+                <td>${escapeHtml(c.codigo)}</td>
+                <td class="col-institucion">${escapeHtml(c.institucion)}</td>
+                <td>${escapeHtml(c.tipo)}</td>
+                <td>${c.fecha_terminacion || '—'}</td>
+                <td><strong>🟡 ${c.dias} días</strong></td>
+                <td>${escapeHtml(c.administrador)}</td>
+            </tr>
+        `;
+    });
+
+    // 2. Vencidos
+    const tbodyVenc = document.getElementById('tbody-vencidos-lista');
+    const vencidos = DATOS.convenios.filter(c => c.estado_vigencia === 'VENCIDO');
+    tbodyVenc.innerHTML = '';
+    vencidos.slice(0, 100).forEach(c => {
+        tbodyVenc.innerHTML += `
+            <tr style="cursor:pointer;" onclick="abrirModalPorId('${c.id}')">
+                <td>${escapeHtml(c.codigo)}</td>
+                <td>${c.anio}</td>
+                <td class="col-institucion">${escapeHtml(c.institucion)}</td>
+                <td>${escapeHtml(c.tipo)}</td>
+                <td>${c.fecha_terminacion || '—'}</td>
+                <td>${escapeHtml(c.administrador)}</td>
+            </tr>
+        `;
+    });
+
+    // 3. Revision
+    const tbodyRev = document.getElementById('tbody-revision-lista');
+    const revisiones = DATOS.convenios.filter(c => c.revision);
+    tbodyRev.innerHTML = '';
+    revisiones.forEach(c => {
+        const motivos = c.descripciones_revision.join(', ') || 'Revisión documental';
+        tbodyRev.innerHTML += `
+            <tr style="cursor:pointer;" onclick="abrirModalPorId('${c.id}')">
+                <td>${escapeHtml(c.codigo)}</td>
+                <td>${c.anio}</td>
+                <td class="col-institucion">${escapeHtml(c.institucion)}</td>
+                <td><span class="badge badge-revision">${escapeHtml(motivos)}</span></td>
+                <td>${escapeHtml(c.administrador)}</td>
+            </tr>
+        `;
+    });
+
+    // 4. Mi trabajo
+    const tbodyTrab = document.getElementById('tbody-mi-trabajo');
+    tbodyTrab.innerHTML = '';
+    proximos.slice(0, 10).forEach(c => {
+        tbodyTrab.innerHTML += `
+            <tr style="cursor:pointer;" onclick="abrirModalPorId('${c.id}')">
+                <td>Convenio</td>
+                <td class="col-institucion">${escapeHtml(c.institucion)}</td>
+                <td><span class="badge badge-proximo">🟡 Próximo a vencer</span></td>
+                <td>Vence en <strong>${c.dias} días</strong> (${c.fecha_terminacion})</td>
+            </tr>
+        `;
+    });
+}
+
+function abrirModal(c) {
+    document.getElementById('modal-titulo').textContent = c.institucion + ' (' + (c.codigo || 'S/N') + ')';
+    const dl = document.getElementById('modal-datos');
+    dl.innerHTML = `
+        <dt>Institución:</dt><dd>${escapeHtml(c.institucion)}</dd>
+        <dt>Código / Número:</dt><dd>${escapeHtml(c.codigo)}</dd>
+        <dt>Año:</dt><dd>${c.anio || '—'}</dd>
+        <dt>Tipo de instrumento:</dt><dd>${escapeHtml(c.tipo)}</dd>
+        <dt>Estado de vigencia:</dt><dd><span class="badge badge-${c.estado_vigencia.toLowerCase()}">${c.estado_etiqueta}</span></dd>
+        <dt>Fecha suscripción:</dt><dd>${c.fecha_suscripcion || '—'}</dd>
+        <dt>Fecha terminación:</dt><dd>${c.fecha_terminacion || '—'} ${c.dias !== null ? `(${c.dias} días restantes)` : ''}</dd>
+        <dt>Administrador:</dt><dd>${escapeHtml(c.administrador)}</dd>
+        <dt>Objeto:</dt><dd>${escapeHtml(c.objeto) || '—'}</dd>
+        <dt>Expediente digital:</dt><dd>${c.expediente_disponible ? 'Disponible en repositorio institucional' : 'No localizado'}</dd>
+    `;
+
+    const divAlertas = document.getElementById('modal-alertas');
+    divAlertas.innerHTML = '';
+    if (c.revision && c.descripciones_revision.length > 0) {
+        divAlertas.innerHTML = `
+            <div class="alerta-box alerta-warning-box" style="margin-top:14px;">
+                <strong>Observaciones de control de calidad:</strong>
+                <ul style="margin:6px 0 0; padding-left:20px;">
+                    ${c.descripciones_revision.map(m => `<li>${escapeHtml(m)}</li>`).join('')}
+                </ul>
+            </div>
+        `;
+    }
+
+    document.getElementById('modal-convenio').classList.add('visible');
+}
+
+function abrirModalPorId(id) {
+    const c = DATOS.convenios.find(item => String(item.id) === String(id));
+    if (c) abrirModal(c);
+}
+
+function cerrarModal() {
+    document.getElementById('modal-convenio').classList.remove('visible');
+}
+
+function buscarGlobal(texto) {
+    if (!texto.trim()) return;
+    document.getElementById('filtro-q').value = texto;
+    aplicarFiltros();
+    cambiarVista('convenios');
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+window.addEventListener('DOMContentLoaded', init);
 </script>
 </body>
 </html>
