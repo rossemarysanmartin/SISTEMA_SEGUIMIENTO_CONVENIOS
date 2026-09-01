@@ -255,6 +255,13 @@ def generar_dashboard_ejecutivo(conn, config, config_efectiva, guardar_historico
         nombre_historico = f"DASHBOARD_CONVENIOS_UTMACH_{date.today().isoformat()}.html"
         shutil.copy2(ruta_salida, ruta_historico_dir / nombre_historico)
 
+    # Mantener sincronizado index.html en la raiz para GitHub Pages
+    try:
+        ruta_index_raiz = config.ruta_sistema_seguimiento / "index.html"
+        shutil.copy2(ruta_salida, ruta_index_raiz)
+    except Exception:
+        pass
+
     return ruta_salida
 
 
