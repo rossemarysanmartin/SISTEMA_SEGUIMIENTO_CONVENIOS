@@ -29,6 +29,13 @@ def main():
         config_efectiva = cfg_service.config_efectiva(conn, config)
         datos = export.recolectar_datos(conn, config_efectiva)
         ruta = export.generar_dashboard_ejecutivo(conn, config, config_efectiva, guardar_historico=args.historico)
+        # Sincronizar con index.html en la raiz del repositorio para GitHub Pages
+        import shutil
+        ruta_index_raiz = config.ruta_sistema_seguimiento / "index.html"
+        try:
+            shutil.copy2(ruta, ruta_index_raiz)
+        except Exception:
+            pass
     finally:
         conn.close()
 
