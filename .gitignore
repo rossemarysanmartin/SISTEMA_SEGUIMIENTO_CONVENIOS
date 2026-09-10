@@ -17,6 +17,7 @@ ENV/
 # Logs and large backups
 LOGS/*.log
 RESPALDOS/*.db
+RESPALDOS/*.bundle
 
 # Datos institucionales: NO deben subirse a un repositorio publico.
 # El repositorio es publico (GitHub Pages), asi que la base de datos, las
