@@ -18,6 +18,16 @@ ENV/
 LOGS/*.log
 RESPALDOS/*.db
 
+# Datos institucionales: NO deben subirse a un repositorio publico.
+# El repositorio es publico (GitHub Pages), asi que la base de datos, las
+# matrices y la configuracion local se mantienen solo en el equipo/OneDrive.
+BASE_DATOS/*.db
+BASE_DATOS/*.xlsx
+CONFIGURACION/config.json
+
+# Copias historicas del dashboard (solo se publica index.html)
+DASHBOARD_EJECUTIVO/HISTORICO/
+
 # OS files
 .DS_Store
 Thumbs.db

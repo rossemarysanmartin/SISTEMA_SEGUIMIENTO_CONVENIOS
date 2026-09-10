@@ -1,5 +1,6 @@
 {
-  "ruta_base_convenios": "C:\\Users\\rsanmarti1\\OneDrive - utmachala.edu.ec\\CONVENIOS INTERINSTITUCIONALES UTMACH",
+  "_comentario": "Plantilla de configuracion. Copie este archivo como config.json y ajuste 'ruta_base_convenios' a la ruta local del repositorio documental. config.json NO se versiona porque contiene una ruta local del equipo.",
+  "ruta_base_convenios": "RUTA\\LOCAL\\AL\\REPOSITORIO\\CONVENIOS INTERINSTITUCIONALES UTMACH",
   "carpeta_sistema": "SISTEMA_SEGUIMIENTO_CONVENIOS",
   "anios_analizar": [2020, 2021, 2022, 2023, 2024, 2025, 2026],
   "extensiones_matriz": [".xlsx", ".xls", ".xlsm"],

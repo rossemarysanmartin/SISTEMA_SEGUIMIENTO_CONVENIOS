@@ -71,7 +71,19 @@ def _recolectar_convenios(conn) -> list:
 
     resultado = []
     for f in filas:
+        # `revision` (estricto) reproduce EXACTAMENTE la tarjeta del dashboard
+        # de Flask (db_visualizador.obtener_contadores_dashboard). `revision_ampliada`
+        # reproduce el listado de la pagina /revision-pendiente, que es mas amplio.
+        # Se mantienen separados para que la tarjeta y el listado del dashboard
+        # portable coincidan cada uno con su equivalente del sistema real.
         es_revision = (f["requiere_revision_documental"] == "SI")
+        es_revision_ampliada = (
+            es_revision
+            or f["estado_relacion_documental"] in ("PROBABLE", "NO_ENCONTRADA", "MULTIPLES_COINCIDENCIAS")
+            or f["estado_vigencia"] in (None, "SIN_INFORMACION")
+            or f["conflicto_fecha"] == "SI"
+            or f["tiene_adenda"] == "POR_REVISAR"
+        )
         resultado.append({
             "id": f["id_sistema"],
             "anio": f["anio"],
@@ -89,7 +101,8 @@ def _recolectar_convenios(conn) -> list:
             "conflicto": f["conflicto_fecha"] or "NO",
             "expediente_disponible": bool(f["ruta_documento_principal"]),
             "revision": es_revision,
-            "descripciones_revision": _descripciones_revision(f) if (es_revision or f["conflicto_fecha"] == "SI" or f["tiene_adenda"] == "POR_REVISAR") else [],
+            "revision_ampliada": es_revision_ampliada,
+            "descripciones_revision": _descripciones_revision(f) if es_revision_ampliada else [],
         })
     return resultado
 
@@ -103,6 +116,7 @@ def _contadores_convenios(convenios: list) -> dict:
         "vencidos": sum(1 for c in convenios if c["estado_vigencia"] == "VENCIDO"),
         "sin_informacion": sum(1 for c in convenios if c["estado_vigencia"] == "SIN_INFORMACION"),
         "requieren_revision": sum(1 for c in convenios if c["revision"]),
+        "requieren_revision_ampliada": sum(1 for c in convenios if c["revision_ampliada"]),
         "posible_adenda": sum(1 for c in convenios if c["adenda"] in ("SI", "POR_REVISAR")),
     }
 
@@ -507,6 +521,41 @@ td.col-institucion { min-width: 240px; font-weight: 500; }
 .alerta-box { padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 0.88rem; }
 .alerta-info-box { background: #e8f0fb; border: 1px solid #bcd3ee; color: #1c4a7a; }
 .alerta-warning-box { background: #fff4e5; border: 1px solid #fed7a2; color: #8a4b08; }
+
+/* --- Bloque demostrativo del módulo de solicitudes (solo consulta) --- */
+.lista-conoce { columns: 2; column-gap: 30px; padding-left: 20px; font-size: 0.88rem; margin: 6px 0 0; }
+.lista-conoce li { margin-bottom: 6px; }
+.aviso-demo {
+    display: inline-block; background: #fff4e5; color: #8a4b08; border: 1px solid #fed7a2;
+    border-radius: 6px; padding: 6px 12px; font-size: 0.82rem; font-weight: 600; margin-bottom: 14px;
+}
+.demo-formulario { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+.demo-campo-ancho { grid-column: 1 / -1; }
+.demo-campo label { display: block; font-size: 0.76rem; color: #5a6472; margin-bottom: 4px; font-weight: 600; }
+.demo-campo input, .demo-campo select {
+    width: 100%; padding: 7px 9px; border: 1px solid var(--gris-borde); border-radius: 6px;
+    background: #f8fafb; font-size: 0.86rem; color: var(--gris-texto);
+}
+.demo-grupo-condicional {
+    grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px; border-top: 1px dashed var(--gris-borde); padding-top: 14px; margin-top: 4px;
+}
+.demo-ficha-solicitud {
+    background: #f8fafb; border: 1px solid var(--gris-borde); border-radius: 6px; padding: 14px;
+    margin-bottom: 16px; font-size: 0.9rem; display: grid; gap: 6px;
+}
+.demo-timeline { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 6px; margin-bottom: 14px; }
+.demo-timeline-paso {
+    background: var(--azul-utmach); color: #fff; padding: 7px 12px; border-radius: 6px;
+    font-size: 0.76rem; font-weight: 600;
+}
+.demo-timeline-paso:not(:last-child)::after { content: "→"; margin-left: 10px; color: #9aa5b1; font-weight: 400; }
+.chips-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+    background: #edf1f5; color: var(--azul-oscuro); border: 1px solid var(--gris-borde);
+    border-radius: 16px; padding: 6px 14px; font-size: 0.82rem; font-weight: 600;
+}
+@media (max-width: 640px) { .lista-conoce { columns: 1; } }
 </style>
 </head>
 <body>
@@ -519,7 +568,7 @@ td.col-institucion { min-width: 240px; font-weight: 500; }
     <nav class="nav-principal" id="navPrincipal">
         <a class="nav-link activo" onclick="cambiarVista('inicio')">Inicio</a>
         <a class="nav-link" onclick="cambiarVista('convenios')">Convenios</a>
-        <a class="nav-link" onclick="cambiarVista('solicitudes')">📩 Solicitudes</a>
+        <a class="nav-link" onclick="cambiarVista('solicitudes')">📩 Solicitudes y trazabilidad</a>
         <a class="nav-link" onclick="cambiarVista('pendientes')">⏳ Pendientes</a>
         <a class="nav-link" onclick="cambiarVista('mi-trabajo')">🗓 Mi trabajo</a>
         <a class="nav-link" onclick="cambiarVista('proximos-vencer')">Próximos a vencer</a>
@@ -715,13 +764,103 @@ td.col-institucion { min-width: 240px; font-weight: 500; }
         </div>
     </section>
 
-    <!-- 3. VISTA SOLICITUDES -->
+    <!-- 3. VISTA SOLICITUDES Y TRAZABILIDAD -->
     <section id="vista-solicitudes" class="seccion">
-        <h1>📩 Solicitudes en trámite (<span id="total-solicitudes">0</span>)</h1>
+        <h1>📩 Solicitudes y trazabilidad (<span id="total-solicitudes">0</span>)</h1>
         <div class="alerta-box alerta-info-box">
-            Módulo de trazabilidad y gestión de convenios desde su ingreso hasta la suscripción.
+            El módulo de solicitudes permite registrar los pedidos de nuevos convenios desde su ingreso y conservar
+            la trazabilidad de las actuaciones realizadas durante su gestión, especialmente en los trámites recibidos
+            por correo electrónico.
         </div>
+
         <div class="kanban-grid" id="kanban-solicitudes"></div>
+        <p id="mensaje-sin-solicitudes" class="alerta-box alerta-warning-box" style="display:none;">
+            Actualmente no existen solicitudes registradas.
+        </p>
+
+        <div class="panel">
+            <h3 style="margin-top:0; color:var(--azul-oscuro);">Este módulo permite conocer</h3>
+            <ul class="lista-conoce">
+                <li>Cuándo ingresó</li>
+                <li>Por qué medio</li>
+                <li>A quién se delegó</li>
+                <li>Qué criterio se solicitó</li>
+                <li>A qué dependencia</li>
+                <li>Qué respuesta está pendiente</li>
+                <li>Cuánto tiempo lleva sin movimiento</li>
+                <li>En qué etapa se encuentra</li>
+                <li>Si finalmente fue suscrito</li>
+            </ul>
+        </div>
+
+        <div class="panel">
+            <h3 style="margin-top:0; color:var(--azul-oscuro);">1. Registro de una nueva solicitud</h3>
+            <p class="aviso-demo">Vista demostrativa — el registro real se realiza en el Sistema de Seguimiento de Convenios.</p>
+            <div class="demo-formulario">
+                <div class="demo-campo"><label>Fecha de ingreso</label><input type="text" value="10/09/2026" disabled></div>
+                <div class="demo-campo">
+                    <label>Medio de ingreso</label>
+                    <select id="demo-medio-ingreso">
+                        <option value="correo">Correo electrónico</option>
+                        <option value="sistema">Sistema institucional</option>
+                    </select>
+                </div>
+                <div class="demo-campo"><label>Institución / contraparte</label><input type="text" value="Institución de ejemplo" disabled></div>
+                <div class="demo-campo"><label>Asunto</label><input type="text" value="Solicitud de convenio de cooperación" disabled></div>
+                <div class="demo-campo"><label>Tipo de convenio</label><input type="text" value="Convenio Marco" disabled></div>
+                <div class="demo-campo"><label>Dependencia solicitante</label><input type="text" value="Unidad Académica / Facultad" disabled></div>
+                <div class="demo-campo"><label>Responsable</label><input type="text" value="Responsable de ejemplo" disabled></div>
+                <div class="demo-campo demo-campo-ancho"><label>Observación</label><input type="text" value="Ejemplo de observación breve." disabled></div>
+
+                <div id="demo-grupo-correo" class="demo-grupo-condicional">
+                    <div class="demo-campo"><label>Remitente</label><input type="text" value="Nombre de ejemplo" disabled></div>
+                    <div class="demo-campo"><label>Correo</label><input type="text" value="ejemplo@institucion.edu" disabled></div>
+                    <div class="demo-campo"><label>Asunto del correo</label><input type="text" value="Solicitud de convenio" disabled></div>
+                    <div class="demo-campo"><label>Fecha del correo</label><input type="text" value="08/09/2026" disabled></div>
+                </div>
+                <div id="demo-grupo-sistema" class="demo-grupo-condicional" style="display:none;">
+                    <div class="demo-campo"><label>Número de trámite</label><input type="text" value="TR-2026-000123" disabled></div>
+                    <div class="demo-campo"><label>Fecha del trámite</label><input type="text" value="08/09/2026" disabled></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3 style="margin-top:0; color:var(--azul-oscuro);">2. Ejemplo de trazabilidad</h3>
+            <p class="aviso-demo">EJEMPLO DEMOSTRATIVO — NO CORRESPONDE A UN TRÁMITE REAL</p>
+            <div class="demo-ficha-solicitud">
+                <div><strong>SOL-2026-0001</strong> — EJEMPLO DEMOSTRATIVO</div>
+                <div>Estado: <span class="badge badge-proximo">PENDIENTE DE RESPUESTA</span></div>
+                <div>Pendiente actual: <em>Esperando criterio de factibilidad</em></div>
+            </div>
+            <div class="demo-timeline">
+                <div class="demo-timeline-paso">RECEPCIÓN</div>
+                <div class="demo-timeline-paso">RECIBIDO EN LA UNIDAD</div>
+                <div class="demo-timeline-paso">DELEGACIÓN</div>
+                <div class="demo-timeline-paso">SOLICITUD DE CRITERIO</div>
+                <div class="demo-timeline-paso">RESPUESTA RECIBIDA</div>
+                <div class="demo-timeline-paso">ENVÍO A CONTRAPARTE</div>
+                <div class="demo-timeline-paso">FIRMA</div>
+                <div class="demo-timeline-paso">SUSCRIPCIÓN</div>
+            </div>
+            <p style="color:#5a6472; font-size:0.86rem;">El flujo no es rígido: las actuaciones se registran según
+            corresponda a cada trámite; no todos los pasos ocurren siempre ni en el mismo orden.</p>
+        </div>
+
+        <div class="panel">
+            <h3 style="margin-top:0; color:var(--azul-oscuro);">¿Qué se puede registrar?</h3>
+            <div class="chips-grid">
+                <span class="chip">Delegar</span>
+                <span class="chip">Solicitar criterio</span>
+                <span class="chip">Solicitar factibilidad</span>
+                <span class="chip">Enviar a jurídico</span>
+                <span class="chip">Registrar respuesta</span>
+                <span class="chip">Enviar a contraparte</span>
+                <span class="chip">Enviar a firma</span>
+                <span class="chip">Marcar como suscrito</span>
+                <span class="chip">Nota interna</span>
+            </div>
+        </div>
     </section>
 
     <!-- 4. VISTA PENDIENTES -->
@@ -777,7 +916,13 @@ td.col-institucion { min-width: 240px; font-weight: 500; }
 
     <!-- 8. VISTA REVISIÓN PENDIENTE -->
     <section id="vista-revision" class="seccion">
-        <h1>🟠 Convenios que requieren revisión</h1>
+        <h1>🟠 Convenios que requieren revisión (<span id="total-revision">0</span>)</h1>
+        <div class="alerta-box alerta-info-box">
+            Incluye todos los registros con alguna observación por revisar: falta de información de vigencia,
+            relación documental por revisar, documento no localizado, posible adenda o conflicto entre matriz y documento.
+            La tarjeta <strong>&quot;Requieren revisión&quot;</strong> de la portada contabiliza únicamente los marcados
+            expresamente como revisión documental.
+        </div>
         <div class="panel">
             <table>
                 <thead>
@@ -1134,7 +1279,19 @@ function irAPagina(p) {
 
 function renderizarSolicitudesKanban() {
     const grid = document.getElementById('kanban-solicitudes');
+    const vacio = document.getElementById('mensaje-sin-solicitudes');
     grid.innerHTML = '';
+
+    // Sin solicitudes reales no se muestra un tablero vacío: se muestra el
+    // estado vacío explícito y queda visible el bloque demostrativo.
+    if (!DATOS.solicitudes.length) {
+        grid.style.display = 'none';
+        if (vacio) vacio.style.display = 'block';
+        return;
+    }
+    grid.style.display = 'grid';
+    if (vacio) vacio.style.display = 'none';
+
     const etapas = [
         { key: 'RECIBIDA', titulo: 'Recibida' },
         { key: 'EN_GESTION', titulo: 'En Gestión' },
@@ -1187,7 +1344,11 @@ function renderizarProximosLista() {
 
 function renderizarRevisiones() {
     const tbodyRev = document.getElementById('tbody-revision-lista');
-    const revisiones = DATOS.convenios.filter(c => c.revision);
+    // Criterio amplio: mismo listado que la pagina "Revisión pendiente" del
+    // sistema real (no solo los marcados como revisión documental).
+    const revisiones = DATOS.convenios.filter(c => c.revision_ampliada);
+    const contador = document.getElementById('total-revision');
+    if (contador) contador.textContent = revisiones.length;
     tbodyRev.innerHTML = '';
     revisiones.forEach(c => {
         const motivos = c.descripciones_revision.join(', ') || 'Requiere revisión documental';
@@ -1300,7 +1461,23 @@ function escapeHtml(str) {
         .replace(/'/g, '&#039;');
 }
 
+// Bloque demostrativo del módulo de solicitudes: alterna los campos de
+// "Correo electrónico" / "Sistema institucional". Es puramente visual, no lee
+// ni escribe datos reales y no envía nada a ningún servidor.
+function inicializarDemoSolicitudes() {
+    const selectMedio = document.getElementById('demo-medio-ingreso');
+    if (!selectMedio) return;
+    const grupoCorreo = document.getElementById('demo-grupo-correo');
+    const grupoSistema = document.getElementById('demo-grupo-sistema');
+    selectMedio.addEventListener('change', () => {
+        const esCorreo = selectMedio.value === 'correo';
+        grupoCorreo.style.display = esCorreo ? 'grid' : 'none';
+        grupoSistema.style.display = esCorreo ? 'none' : 'grid';
+    });
+}
+
 window.addEventListener('DOMContentLoaded', init);
+window.addEventListener('DOMContentLoaded', inicializarDemoSolicitudes);
 </script>
 </body>
 </html>

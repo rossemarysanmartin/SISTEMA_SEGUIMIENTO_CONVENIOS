@@ -88,12 +88,29 @@ def test_convenio_con_ruta_documento_muestra_expediente_disponible(conn, config_
     assert datos["convenios"][0]["expediente_disponible"] is True
 
 
-def test_convenio_con_adenda_por_revisar_marca_revision(conn, config_efectiva):
-    _insertar_convenio(conn, tiene_adenda="POR_REVISAR")
+def test_convenio_con_adenda_por_revisar_entra_en_revision_ampliada(conn, config_efectiva):
+    """Una adenda por revisar NO cuenta en la tarjeta estricta (que debe
+    coincidir con el contador de Flask), pero SI debe aparecer en el listado
+    de revisión, igual que en la página /revision-pendiente del sistema."""
+    _insertar_convenio(conn, tiene_adenda="POR_REVISAR", requiere_revision_documental="NO")
     datos = export.recolectar_datos(conn, config_efectiva)
     c = datos["convenios"][0]
-    assert c["revision"] is True
+    assert c["revision"] is False
+    assert c["revision_ampliada"] is True
     assert "Posible adenda" in c["descripciones_revision"]
+    assert datos["contadores_convenios"]["requieren_revision"] == 0
+    assert datos["contadores_convenios"]["requieren_revision_ampliada"] == 1
+
+
+def test_tarjeta_revision_estricta_coincide_con_criterio_de_flask(conn, config_efectiva):
+    """La tarjeta cuenta solo requiere_revision_documental='SI' (criterio de
+    db_visualizador.obtener_contadores_dashboard)."""
+    _insertar_convenio(conn, requiere_revision_documental="SI")
+    _insertar_convenio(conn, codigo_original="CONV-002", institucion="Otra", conflicto_fecha="SI",
+                        requiere_revision_documental="NO")
+    datos = export.recolectar_datos(conn, config_efectiva)
+    assert datos["contadores_convenios"]["requieren_revision"] == 1
+    assert datos["contadores_convenios"]["requieren_revision_ampliada"] == 2
 
 
 def test_sin_solicitudes_reales_estado_vacio(conn, config_efectiva):
