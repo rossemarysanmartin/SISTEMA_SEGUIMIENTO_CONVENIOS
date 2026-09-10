@@ -62,11 +62,22 @@ if ($LASTEXITCODE -ne 0) {
 
 # --quiet/--no-progress evitan que git escriba barras de progreso en una
 # consola que no existe cuando la tarea corre desatendida.
+$commitLocal = (& git rev-parse HEAD).Trim()
 & git push --quiet --no-progress origin main 2>&1 | ForEach-Object { Add-Content -Path $log -Value "    $_" -Encoding utf8 }
-if ($LASTEXITCODE -ne 0) {
-    Escribir "ERROR: no se pudo subir a GitHub (codigo $LASTEXITCODE). Revise la conexion."
-    exit 1
+
+# No se confia en el codigo de salida de git: bajo el Programador de tareas el
+# proceso puede morir DESPUES de haber subido correctamente (deja un codigo de
+# error enganoso). Se comprueba contra el servidor cual es el estado real.
+$commitRemoto = ''
+try {
+    $ref = & git ls-remote origin refs/heads/main 2>&1
+    if ($ref -match '^([0-9a-f]{40})') { $commitRemoto = $Matches[1] }
+} catch { }
+
+if ($commitRemoto -eq $commitLocal) {
+    Escribir "Publicacion completada correctamente ($($commitLocal.Substring(0,7))): https://rossemarysanmartin.github.io/SISTEMA_SEGUIMIENTO_CONVENIOS/"
+    exit 0
 }
 
-Escribir "Publicacion completada correctamente: https://rossemarysanmartin.github.io/SISTEMA_SEGUIMIENTO_CONVENIOS/"
-exit 0
+Escribir "ERROR: el servidor no tiene el ultimo commit (local $($commitLocal.Substring(0,7)) / remoto $(if($commitRemoto){$commitRemoto.Substring(0,7)}else{'desconocido'})). Ejecute publicar_web.bat manualmente."
+exit 1
