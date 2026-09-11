@@ -29,6 +29,10 @@ CONFIGURACION/config.json
 # Copias historicas del dashboard (solo se publica index.html)
 DASHBOARD_EJECUTIVO/HISTORICO/
 
+# Exportaciones y anexos generados para tramites internos: contienen datos
+# institucionales y no deben quedar en un repositorio publico.
+EXPORTACIONES/
+
 # OS files
 .DS_Store
 Thumbs.db
