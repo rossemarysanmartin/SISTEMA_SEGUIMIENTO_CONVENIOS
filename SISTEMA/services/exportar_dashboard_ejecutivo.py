@@ -64,7 +64,7 @@ def _recolectar_convenios(conn) -> list:
         """SELECT id_sistema, anio, codigo_original, numero_original, institucion, tipo_instrumento,
                   objeto, fecha_suscripcion, fecha_finalizacion, estado_vigencia, dias_para_vencimiento,
                   administrador, ruta_documento_principal, estado_relacion_documental,
-                  requiere_revision_documental, tiene_adenda, conflicto_fecha
+                  requiere_revision_documental, tiene_adenda, conflicto_fecha, carreras_beneficiadas
            FROM convenios WHERE clasificacion_general='CONVENIO'
            ORDER BY anio DESC, institucion"""
     ).fetchall()
@@ -97,6 +97,7 @@ def _recolectar_convenios(conn) -> list:
             "estado_etiqueta": _ETIQUETAS_ESTADO_VIGENCIA.get(f["estado_vigencia"], "Sin información suficiente"),
             "dias": f["dias_para_vencimiento"],
             "administrador": f["administrador"] or "—",
+            "carreras": " ".join(str(f["carreras_beneficiadas"] or "").split()),
             "adenda": f["tiene_adenda"] or "NO",
             "conflicto": f["conflicto_fecha"] or "NO",
             "expediente_disponible": bool(f["ruta_documento_principal"]),
@@ -1122,8 +1123,19 @@ function filtrarConvenios(estado) {
     cambiarVista('convenios');
 }
 
+// Quita tildes y pasa a minusculas para que la busqueda encuentre igual
+// "GOBIERNO AUTONOMO" que "GOBIERNO AUTÓNOMO". En la base conviven ambas
+// grafias, asi que sin esto una misma institucion devuelve resultados
+// distintos segun como se escriba. Replica el comportamiento del sistema local.
+function normalizarTexto(t) {
+    return String(t || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
+}
+
 function aplicarFiltros() {
-    const q = document.getElementById('filtro-q').value.trim().toLowerCase();
+    const q = normalizarTexto(document.getElementById('filtro-q').value.trim());
     const anio = document.getElementById('filtro-anio').value;
     const tipo = document.getElementById('filtro-tipo').value;
     const estado = document.getElementById('filtro-estado').value;
@@ -1133,7 +1145,7 @@ function aplicarFiltros() {
 
     conveniosFiltrados = DATOS.convenios.filter(c => {
         if (q) {
-            const txt = `${c.codigo} ${c.institucion} ${c.tipo} ${c.administrador} ${c.objeto} ${c.anio}`.toLowerCase();
+            const txt = normalizarTexto(`${c.codigo} ${c.institucion} ${c.tipo} ${c.administrador} ${c.objeto} ${c.anio} ${c.carreras || ''}`);
             if (!txt.includes(q)) return false;
         }
         if (anio && String(c.anio) !== anio) return false;
@@ -1415,6 +1427,7 @@ function abrirModal(c) {
         <dt>Fecha suscripción:</dt><dd>${c.fecha_suscripcion || '—'}</dd>
         <dt>Fecha terminación:</dt><dd>${c.fecha_terminacion || '—'} ${c.dias !== null ? `(${c.dias} días restantes)` : ''}</dd>
         <dt>Administrador:</dt><dd>${escapeHtml(c.administrador)}</dd>
+        <dt>Carreras beneficiadas:</dt><dd>${escapeHtml(c.carreras) || '—'}</dd>
         <dt>Objeto:</dt><dd>${escapeHtml(c.objeto) || '—'}</dd>
         <dt>Expediente digital:</dt><dd>${c.expediente_disponible ? 'Disponible en repositorio institucional' : 'No localizado'}</dd>
     `;
